@@ -1,0 +1,14 @@
+{
+  "name": "mountain-time",
+  "owner": { "name": "Dan Wood" },
+  "metadata": { "description": "Dan Wood's agent skills", "version": "0.1.0" },
+  "plugins": [
+    {
+      "name": "mountain-time",
+      "description": "Dan Wood's agent skills",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/prose-review"]
+    }
+  ]
+}
