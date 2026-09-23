@@ -54,6 +54,11 @@ Delete outright if it adds nothing beyond a one-second glance at the signature.
 
 **6. Meta-commentary outside intent.** `[ASIDE]` Meta-commentary is restricted to intent, context, and external constraints the syntax cannot express. Anything else is deleted.
 
+**7. Decision-justification and road-not-taken.** `[JUSTIFY]` No prose defending *why the code is shaped this way* rather than stating what the value or constraint is. Two shapes:
+Refactor or design rationale — Bad: `// The runtime package, named once`, `// shared so the two agree`, `// a single coordinate keeps these from drifting`, `// kept separate so tests can import it`, `// returned so tests assert against it`
+Road-not-taken or API history — Bad: `// fromString is deprecated, so use fromProps`, `// rather than fromLookup`, `// we don't use X because...`
+The code already uses the chosen API and already has the shape; the reasoning that produced it is noise. Keep the why only when it names a constraint the code cannot express: `// Must match the runtime's EMF namespace`, `// Same-region queue, so no resource policy`
+
 ## What Earns Its Place
 
 Keep or write a comment when it carries:
@@ -63,6 +68,8 @@ Keep or write a comment when it carries:
 - Non-obvious consequence: ordering requirements, thread/lock assumptions, precision or overflow limits
 - A real danger: what breaks if the next reader "simplifies" this
 - Genuinely dense algorithms: the shape of the trick, not a line-by-line narration
+
+The why must name an external cause or an invariant, not a preference. Why this name, why this file split, why not the other API — delete. Test: strip the refactor motive or the rejected alternative from the comment; if nothing remains that describes the code as it *is*, the comment was `[JUSTIFY]`.
 
 ## Documentation Prose
 
@@ -80,18 +87,18 @@ Report in this order. Do not flood with nits when higher-order findings exist.
 
 1. `LIE` — comment or doc contradicts the code it describes. Actively harmful; fix first.
 2. `NARRATION` / `BLEED` — diff-narration and session bleed. Guaranteed to rot, exposes the generation process.
-3. `ASIDE` / `VOICE` — rhetorical asides, first-person, polite filler. Noise with a voice problem.
+3. `ASIDE` / `VOICE` / `JUSTIFY` — rhetorical asides, first-person, polite filler, decision-justification. Noise with a voice problem.
 4. `ECHO` / `TEXTBOOK` — signature echoing and educational over-explaining. Pure token cost.
 5. `MISSING` — code that is genuinely surprising with nothing explaining it. The only finding that adds a comment.
 
-These eight tags are the complete set. Every finding carries exactly one, and it is the tag printed in the output block.
+These nine tags are the complete set. Every finding carries exactly one, and it is the tag printed in the output block.
 
 ## Output
 
 Per finding:
 
 ```
-path/to/file.ts:42  [LIE|NARRATION|BLEED|ASIDE|VOICE|ECHO|TEXTBOOK|MISSING]
+path/to/file.ts:42  [LIE|NARRATION|BLEED|ASIDE|VOICE|JUSTIFY|ECHO|TEXTBOOK|MISSING]
 > // the offending line, quoted
 DELETE  (or) REWRITE → // the replacement
 why it fails, one line
