@@ -59,6 +59,10 @@ Refactor or design rationale — Bad: `// The runtime package, named once`, `// 
 Road-not-taken or API history — Bad: `// fromString is deprecated, so use fromProps`, `// rather than fromLookup`, `// we don't use X because...`
 The code already uses the chosen API and already has the shape; the reasoning that produced it is noise. Keep the why only when it names a constraint the code cannot express: `// Must match the runtime's EMF namespace`, `// Same-region queue, so no resource policy`
 
+**8. Redundant restatement.** `[RESTATE]` No comment that re-encodes what adjacent code already states — enumerating a list's or enum's members, naming the identifiers a nearby literal declares, or paraphrasing a self-evident statement. Signature echoing (#5) is the special case for function signatures; this is the general rule.
+Lockstep test: *if the code changed, would this comment have to change with it to stay true, without adding anything the code doesn't say?* If yes, the comment is a second source of truth. Cut the restatement; keep only the why the code cannot carry.
+Bad: `// statuses: pending, active, closed` above `enum Status { Pending, Active, Closed }`; `// retries three times` beside `for (let i = 0; i < 3; i++)`
+
 ## What Earns Its Place
 
 Keep or write a comment when it carries:
@@ -70,6 +74,18 @@ Keep or write a comment when it carries:
 - Genuinely dense algorithms: the shape of the trick, not a line-by-line narration
 
 The why must name an external cause or an invariant, not a preference. Why this name, why this file split, why not the other API — delete. Test: strip the refactor motive or the rejected alternative from the comment; if nothing remains that describes the code as it *is*, the comment was `[JUSTIFY]`.
+
+## Clarity Pass
+
+Separate from the banned-pattern checks: those decide whether prose survives, this decides whether the survivors read well. After the cuts, read every remaining comment and doc line and flag any that are hard to follow — tangled sentences, ambiguous pronouns, stacked clauses, jargon that hides the point. Rewrite them with `[CLARITY]` per ASD-STE100 Simplified Technical English:
+
+- One idea per sentence. Keep them short — aim for ≤ 20 words in instructions, ≤ 25 in descriptions.
+- Active voice. Present tense for descriptions, imperative for instructions.
+- One term per concept. Do not cycle synonyms for the same thing.
+- Concrete, plain vocabulary. Drop filler and hedging.
+- No nested subordinate clauses — split them into separate sentences.
+
+A `[CLARITY]` finding is always a rewrite, never a delete: the comment earns its place, it just reads badly. If it fails clarity *and* a banned pattern, report the banned pattern — deletion outranks rewriting.
 
 ## Documentation Prose
 
@@ -88,17 +104,18 @@ Report in this order. Do not flood with nits when higher-order findings exist.
 1. `LIE` — comment or doc contradicts the code it describes. Actively harmful; fix first.
 2. `NARRATION` / `BLEED` — diff-narration and session bleed. Guaranteed to rot, exposes the generation process.
 3. `ASIDE` / `VOICE` / `JUSTIFY` — rhetorical asides, first-person, polite filler, decision-justification. Noise with a voice problem.
-4. `ECHO` / `TEXTBOOK` — signature echoing and educational over-explaining. Pure token cost.
-5. `MISSING` — code that is genuinely surprising with nothing explaining it. The only finding that adds a comment.
+4. `ECHO` / `RESTATE` / `TEXTBOOK` — signature echoing, redundant restatement, educational over-explaining. Pure token cost and a second source of truth.
+5. `CLARITY` — a surviving comment or doc that is correct but hard to read. The only finding besides `MISSING` that keeps the prose; it rewrites rather than deletes.
+6. `MISSING` — code that is genuinely surprising with nothing explaining it. The only finding that adds a comment.
 
-These nine tags are the complete set. Every finding carries exactly one, and it is the tag printed in the output block.
+These eleven tags are the complete set. Every finding carries exactly one, and it is the tag printed in the output block.
 
 ## Output
 
 Per finding:
 
 ```
-path/to/file.ts:42  [LIE|NARRATION|BLEED|ASIDE|VOICE|JUSTIFY|ECHO|TEXTBOOK|MISSING]
+path/to/file.ts:42  [LIE|NARRATION|BLEED|ASIDE|VOICE|JUSTIFY|ECHO|RESTATE|TEXTBOOK|CLARITY|MISSING]
 > // the offending line, quoted
 DELETE  (or) REWRITE → // the replacement
 why it fails, one line
