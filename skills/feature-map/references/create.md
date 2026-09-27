@@ -26,6 +26,9 @@ Choose up to 5 features that matter most (fewer if the app has fewer): core purp
 
 - `starts_at` lists the location on every surface that offers the feature.
 - Write scenarios for the main path, the important alternates (cancel, empty, error states the user can see), and each surface.
+- For any operation that isn't instant, add the interrupt alternates: the user cancels it mid-flight, and the user leaves the location while it runs.
+- Where one action fans out into parallel backend work, add a scenario proving each result lands in its own row, not paired by arrival order.
+- Let the verify skill's cost per action bound how many metered scenarios you write.
 - Every Then names an observable result and a check command. The last Then in each scenario captures proof.
 - Drive every scenario once. A step you couldn't drive gets `(unverified: <reason>)` on its scenario heading.
 - Gotchas are traps you actually hit or saw in the code: focus-sensitive shortcuts, debounce, defaults that hide data, output formats.

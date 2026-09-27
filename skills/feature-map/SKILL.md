@@ -82,5 +82,6 @@ If Node isn't available, check those items by hand. Either way, check these your
 
 - [ ] `harness` matches the harness the verify skill's SKILL.md names (for a tool-call harness, its pseudo-command table).
 - [ ] Every `arrive.run` is read-only and every `expect` is something a user can see.
+- [ ] Every `arrive.run` and Then check fails when its handle matches nothing (absent ≠ unchanged).
 - [ ] No component names or internal APIs anywhere in the map (the script only catches source paths).
 - [ ] "Mapped without scenarios" in the README lists the notable features that have no catalog file.

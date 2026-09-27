@@ -90,6 +90,8 @@ Every human step costs a user interruption on every run. Keep them few (ideally 
 
 `run` may be retried for a bounded time (say up to 10 seconds) while the app settles, such as a loading screen after navigation. Retry the check; never add a fixed sleep. Prefer role and accessible-name queries. When the harness can't query by role, a selector in `run` is acceptable; `expect` still describes what the user sees.
 
+A check must fail when its handle matches nothing. A check that can't tell "absent" from "unchanged" (`el?.textContent.length` returns `undefined` on an empty page, so "stopped growing" passes) is not a check. With a raw-eval harness, assert the element exists before reading from it, query all matches rather than the first, and avoid positional pseudo-classes (`:nth-child`, `:last-of-type`) that encode DOM shape.
+
 ### Effects
 
 | effect | meaning | when building the map |
@@ -136,6 +138,7 @@ requires: [<fixture-name>, ...]
 
 - `feature` is kebab-case and matches the filename.
 - `starts_at` lists every location where the feature begins. List a location on each surface that offers the feature. A proof that covers only one of them is incomplete.
+- Every Then check follows the arrival-check rule: it fails when its handle is missing.
 - A scenario proves one behavior. It starts at a `starts_at` location (or a location reachable from one), alternates When/Then steps, and ends with a Then that captures proof.
 - Steps restate commands. They do not reference transitions. Moving to another location mid-scenario is fine: use the same command the map's transition uses, and check the destination's `arrive`.
 - A scenario that could not be driven carries `(unverified: <reason>)` after its heading. This includes states the UI handles but a user can't cause (a save failure with no way to trigger it): write the scenario and mark it `(unverified: no user-reachable trigger)`.
