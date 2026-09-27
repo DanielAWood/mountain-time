@@ -25,6 +25,7 @@ The format is defined by the `feature-map` skill's `references/schema.md`.
 
 - Drive the real user path. Never use internal setters, test-only endpoints, or direct DB writes to reach a state.
 - Capture the action and the resulting state, not only the final screen.
+- Every proof includes the error channel: the browser console for UI, stderr for CLI. An error there fails the proof even when the screen looks right.
 - UI proof: an ARIA snapshot and a screenshot with the Notes identity visible.
 - CLI proof: the command, stdout, stderr, and exit code.
 - Changes to stored data: confirm them from a second, read-only view (reopen from the list, or `notes list`). Check side effects (files written, rows inserted, messages sent) alongside what's visible.
