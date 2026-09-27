@@ -1,0 +1,180 @@
+harness: control-notes
+
+fixtures:
+  demo-user:
+    description: Account demo@notes.test / demo-pass exists and can sign in.
+    setup: control-notes cli -- notes admin create-user --email demo@notes.test --password demo-pass
+    teardown: control-notes cli -- notes admin delete-user --email demo@notes.test
+  seeded-notes:
+    description: demo-user owns "Quarterly plan" (body "Draft budget") and "Grocery list".
+    requires: [demo-user]
+    setup: control-notes cli -- notes seed --user demo@notes.test --file fixtures/notes.json
+    teardown: control-notes cli -- notes reset --user demo@notes.test
+
+locations:
+  "web:sign-in":
+    description: Sign-in form shown to a signed-out user.
+    entry: true
+    arrive:
+      run: control-notes browser expect --role heading --name "Sign in"
+      expect: Heading "Sign in" with Email and Password textboxes.
+  "web:home":
+    description: The signed-in user's note list, with the toolbar.
+    requires: [demo-user]
+    arrive:
+      run: control-notes browser expect --role main --name "All notes"
+      expect: Main region "All notes" and toolbar buttons "New note" and "Search".
+  "web:search-dialog":
+    description: Modal search over the user's notes.
+    requires: [demo-user]
+    arrive:
+      run: control-notes browser expect --role dialog --name "Search notes"
+      expect: Dialog "Search notes" with focus in its searchbox.
+  "web:note-editor[new]":
+    description: Blank editor for an unsaved note. Offers Save and Cancel.
+    requires: [demo-user]
+    arrive:
+      run: control-notes browser expect --role form --name "Note editor" --has-button "Cancel"
+      expect: Form "Note editor" with empty Title, focus in Title, and a Cancel button.
+  "web:note-editor[existing]":
+    description: Editor for a saved note. Offers Share and Delete.
+    requires: [demo-user]
+    arrive:
+      run: control-notes browser expect --role form --name "Note editor" --has-button "Delete note"
+      expect: Form "Note editor" with a populated Title and a "Delete note" button.
+  "web:share-dialog":
+    description: Dialog to email a note to someone.
+    requires: [demo-user]
+    arrive:
+      run: control-notes browser expect --role dialog --name "Share note"
+      expect: Dialog "Share note" with a Recipient textbox.
+  "cli:shell[signed-out]":
+    description: A terminal with the notes CLI on PATH and no session.
+    entry: true
+    arrive:
+      run: control-notes cli -- notes whoami --format json
+      expect: Exit code 1 and stderr says "Not signed in".
+  "cli:shell":
+    description: A terminal with the notes CLI on PATH, signed in as demo-user.
+    requires: [demo-user]
+    arrive:
+      run: control-notes cli -- notes whoami --format json
+      expect: 'Exit code 0 and stdout has "email": "demo@notes.test".'
+
+transitions:
+  # sign in / out
+  - from: "web:sign-in"
+    to: "web:home"
+    action: Enter email and password, choose "Sign in".
+    run:
+      - control-notes browser fill --role textbox --name "Email" --value "demo@notes.test"
+      - control-notes browser fill --role textbox --name "Password" --value "demo-pass"
+      - control-notes browser click --role button --name "Sign in"
+    effect: none
+    requires: [demo-user]
+  - from: "web:home"
+    to: "web:sign-in"
+    action: Open the account menu, choose "Sign out".
+    run:
+      - control-notes browser click --role button --name "Account"
+      - control-notes browser click --role menuitem --name "Sign out"
+    effect: none
+
+  - from: "cli:shell[signed-out]"
+    to: "cli:shell"
+    action: Run notes login.
+    run: control-notes cli -- notes login --email demo@notes.test --password demo-pass
+    effect: none
+    requires: [demo-user]
+  - from: "cli:shell"
+    to: "cli:shell[signed-out]"
+    action: Run notes logout.
+    run: control-notes cli -- notes logout
+    effect: none
+
+  # search
+  - from: "web:home"
+    to: "web:search-dialog"
+    action: Choose "Search" in the toolbar.
+    run: control-notes browser click --role button --name "Search"
+    effect: none
+  - from: "web:home"
+    to: "web:search-dialog"
+    action: Press "/" with focus outside any editable field.
+    run: control-notes browser press --key "/"
+    effect: none
+  - from: "web:search-dialog"
+    to: "web:home"
+    action: Press Escape.
+    run: control-notes browser press --key "Escape"
+    effect: none
+  - from: "web:search-dialog"
+    to: "web:note-editor[existing]"
+    action: Search "quarterly", choose the "Quarterly plan" result.
+    run:
+      - control-notes browser fill --role searchbox --name "Search notes" --value "quarterly"
+      - control-notes browser click --role link --name "Quarterly plan"
+    effect: none
+    requires: [seeded-notes]
+
+  # editor
+  - from: "web:home"
+    to: "web:note-editor[new]"
+    action: Choose "New note" in the toolbar.
+    run: control-notes browser click --role button --name "New note"
+    effect: none
+  - from: "web:home"
+    to: "web:note-editor[new]"
+    action: Press "n" with focus outside any editable field.
+    run: control-notes browser press --key "n"
+    effect: none
+  - from: "web:home"
+    to: "web:note-editor[existing]"
+    action: Choose a note in the list.
+    run: control-notes browser click --role link --name "Quarterly plan"
+    effect: none
+    requires: [seeded-notes]
+  - from: "web:note-editor[new]"
+    to: "web:home"
+    action: Choose "Cancel". The draft is discarded.
+    run: control-notes browser click --role button --name "Cancel"
+    effect: none
+  - from: "web:note-editor[new]"
+    to: "web:note-editor[existing]"
+    action: Enter a title, choose "Save note".
+    run:
+      - control-notes browser fill --role textbox --name "Title" --value "Map probe"
+      - control-notes browser click --role button --name "Save note"
+    effect: local
+  - from: "web:note-editor[existing]"
+    to: "web:home"
+    action: Choose "All notes".
+    run: control-notes browser click --role link --name "All notes"
+    effect: none
+  - from: "web:note-editor[existing]"
+    to: "web:home"
+    action: Choose "Delete note", confirm.
+    run:
+      - control-notes browser click --role button --name "Delete note"
+      - control-notes browser click --role button --name "Confirm delete"
+    effect: local
+
+  # share
+  - from: "web:note-editor[existing]"
+    to: "web:share-dialog"
+    action: Choose "Share".
+    run: control-notes browser click --role button --name "Share"
+    effect: none
+  - from: "web:share-dialog"
+    to: "web:note-editor[existing]"
+    action: Choose "Cancel".
+    run: control-notes browser click --role button --name "Cancel"
+    effect: none
+  - from: "web:share-dialog"
+    to: "web:note-editor[existing]"
+    action: Enter a recipient, choose "Send".
+    run:
+      - control-notes browser fill --role textbox --name "Recipient" --value "someone@example.com"
+      - control-notes browser click --role button --name "Send"
+    effect: external
+    unverified: external effect (sends email)

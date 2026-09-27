@@ -8,7 +8,7 @@
       "description": "Dan Wood's agent skills",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/prose-review"]
+      "skills": ["./skills/prose-review", "./skills/create-verification-skill", "./skills/feature-map"]
     }
   ]
 }
