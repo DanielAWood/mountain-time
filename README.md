@@ -31,6 +31,8 @@ Skills are namespaced as plugins (`/mountain-time:prose-review`). Pick one insta
 | Skill | Description |
 | --- | --- |
 | [prose-review](skills/prose-review/SKILL.md) | Review comments, docstrings, and docs — delete the ones that don't earn their place, fix the rest. Args: `[path\|PR#\|branch] [--fix]` |
+| [create-verification-skill](skills/create-verification-skill/SKILL.md) | Generate a project-local `verify-<app>` skill that launches and drives the real app like a user and captures proof. Builds its feature map via `feature-map`, so install both. Slash command only (`/create-verification-skill`); agents won't invoke it on their own. |
+| [feature-map](skills/feature-map/SKILL.md) | Create or update the user-POV map in a `verify-<app>` skill: locations and transitions to reach any screen or state, plus feature scenarios that prove behavior. Args: `[create\|update] [feature\|location\|path\|PR#\|branch\|--full]` |
 
 ## Layout
 
@@ -48,8 +50,11 @@ New skills must also be added to the `skills` array in `.claude-plugin/marketpla
 # scaffold a new skill
 (cd skills && npx skills init my-skill)
 
-# install from the working copy, symlinked, so edits apply live
+# install a snapshot of the working copy (npx skills copies; re-run after edits)
 npx skills add . -g -a claude-code
+
+# or link one skill so edits apply live (Claude Code shown)
+ln -s "$PWD/skills/feature-map" ~/.claude/skills/feature-map
 ```
 
 ## License
