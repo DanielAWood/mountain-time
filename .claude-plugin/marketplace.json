@@ -9,6 +9,11 @@
       "source": "./",
       "strict": false,
       "skills": ["./skills/prose-review", "./skills/create-verification-skill", "./skills/feature-map"]
+    },
+    {
+      "name": "herdr-autoname",
+      "description": "Renames each Herdr agent pane to the session's current phase of work",
+      "source": "./herdr-autoname"
     }
   ]
 }
