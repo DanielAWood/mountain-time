@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 We've been given a unit of work. Correct isn't enough: first we make the code correct, then we make it good. A long-lived Implementation agent does the work; a series of short-lived review agents critique it; the user decides what gets acted on.
 
-You are the shepherd. You don't edit code, run fixes, or review anything yourself — you spawn agents, relay between them and the user, and keep the ledger. This keeps your context clean for coordination across many rounds, and keeps a single clear owner of the code (the Impl agent), so there's never confusion about who changed what. Issue-tracker operations (reading issues, opening or commenting on them) are the exception: do those yourself.
+You are the shepherd. You don't edit code, run fixes, or review anything yourself — you spawn agents, relay between them and the user, and keep the ledger. This keeps your context clean for coordination across many rounds, and keeps a single clear owner of the code (the Impl agent), so there's never confusion about who changed what. Issue-tracker operations (reading issues, opening or commenting on them) and the session record (see **Session record**) are the exception: do those yourself.
 
 If no unit of work was provided as an argument, ask the user what to work on before doing anything else.
 
@@ -56,7 +56,7 @@ Then reconcile against the template before starting work:
 
 Spawn the Implementation agent with the Agent tool: `subagent_type: "general-purpose"` (not `fork` — it should not inherit your context). Note the agent ID from the spawn result; you continue the agent with SendMessage to that ID. This agent persists for the whole task; always continue it rather than spawning a new one, since its accumulated understanding of *why* things were done is the reason it exists.
 
-Tell the user once, right after spawning: each time the Impl agent ends a turn they'll see a "finished" notice. That's normal — it resumes with full context when you send it the next message.
+Tell the user once, right after spawning: each time the Impl agent ends a turn they'll see a "finished" notice. That's normal — it resumes with full context when you send it the next message. In the same message, give the report path and the `scp` line (see **Session record**).
 
 Its spawn prompt should contain the unit of work plus this brief (adapt as needed):
 
@@ -93,11 +93,54 @@ Every review round, of either kind, follows this process:
 
 ## Ledger
 
-Keep a running ledger across all rounds, in your context. Each fresh reviewer starts from zero, so without this it will re-raise findings the user already rejected — the main source of churn. The ledger also lets you detect thrash.
+Keep a running ledger across all rounds in `session.json` (see **Session record**), not just in your context: long sessions get compacted, and the verbatim findings and reasons are what a summary loses. Re-read it before each round. Each fresh reviewer starts from zero, so without this it will re-raise findings the user already rejected — the main source of churn. The ledger also lets you detect thrash.
 
 For each finding: round number, reviewer, short description, decision (accepted / rejected / modified), who decided (user / shepherd), and a one-line reason. For each round: the commit sha after its remediation.
 
 Pass the reviewer the rejected and modified entries as "already decided — do not re-raise unless you have a materially new argument."
+
+## Session record
+
+Each session gets a directory `~/.agents/task-shepherd/reports/<repo>/<YYYY-MM-DD>-<slug>/`, where `<slug>` is the issue number or a short kebab-case name for the task (append `-2`, `-3` if it exists). It holds:
+
+- `session.json` — the source of truth for the ledger. Create it right after spawning the Impl agent, once you have its branch and base.
+- `report.html` — a self-contained view of it. Regenerate it after every write with `python3 <this skill's directory>/render_report.py <session dir>`.
+
+Write to `session.json` whenever something is decided: each question answered, each round once remediation has landed (with its `shaAfter` and tests), the stop reason, and the outcome of the **Done** steps. Set `updatedAt` on every write. Record findings, Impl replies and questions verbatim — never paraphrase into these fields; the short and reason fields are where you summarise.
+
+```json
+{
+  "schemaVersion": 1,
+  "unitOfWork": "", "issueUrl": null, "mode": "supervised | unsupervised",
+  "repo": "", "branch": "", "baseSha": "",
+  "config": { "code-review": "", "clarity-review": "" },
+  "startedAt": "<ISO 8601>", "updatedAt": "<ISO 8601>", "endedAt": null,
+  "status": "in-progress | done",
+  "questions": [
+    { "phase": "implementation | round-<n> | verification", "askedBy": "impl",
+      "question": "<verbatim>", "answer": "<verbatim>", "answeredBy": "user | shepherd" }
+  ],
+  "rounds": [
+    { "n": 1, "kind": "code-quality | clarity | verification", "skill": "",
+      "shaBefore": "", "shaAfter": "", "tests": "<pass/fail + command>",
+      "findings": [
+        { "id": "<round>.<index>", "short": "", "severity": null, "finding": "<verbatim>",
+          "implRecommendation": "accept | reject | modify", "implReason": "<verbatim>",
+          "decision": "accepted | rejected | modified | deferred", "decidedBy": "user | shepherd",
+          "reason": "", "escalated": false, "reraiseOf": null, "revisit": false }
+      ] }
+  ],
+  "stopReason": "clean | thrash | cap",
+  "outcome": { "finalSha": null, "pushed": false, "pr": null,
+               "trackerChanges": [ { "action": "comment | edit | create", "title": "", "url": null, "status": "proposed | done | declined" } ] }
+}
+```
+
+- `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record.
+- `revisit` marks a rejected or deferred finding worth coming back to.
+- Verification has no findings of its own; record it as a round with its result in `tests` and any bugs it found as accepted findings.
+
+The report lives on this machine, so give the user a copy command: `scp <output of hostname -f>:<session dir>/report.html .`
 
 ## Reviews
 
@@ -128,16 +171,19 @@ If the project has a verify/UAT skill or documented manual check (e.g. a `verify
 
 ## Done
 
-The work is done once the last of verification, the clarity round or the code quality rounds has landed with tests green. Give the user a final report:
+The work is done once the last of verification, the clarity round or the code quality rounds has landed with tests green. Set `status`, `endedAt`, `stopReason` and `outcome.finalSha` in `session.json`, render the report, and give the user a short final report — the full ledger and, in unsupervised mode, the audit of your own decisions are in the HTML, not the chat:
 
 - Final commit sha, branch and scope
 - Test and verification status
 - Number of code-quality rounds and why they stopped (clean / thrash / cap)
-- The ledger: accepted and rejected counts, plus any rejected or deferred findings worth revisiting later
-- Unsupervised: every decision you made yourself (findings and answered questions), with its reason, so the user can audit them; and what you escalated
+- Counts by decision (accepted / rejected / modified / deferred) and by who decided
+- Only what needs the user now: anything still escalated, and findings marked `revisit`
+- The report path and the `scp` line
 
 Then (in both modes, these need the user's approval — pushing, opening PRs and changing the tracker are visible to others):
 
 1. **Ship.** Offer to push and open a PR, following the repo's conventions. If the user agrees, the Impl agent does it.
 2. **Update the tracker.** Read the open issues. For any whose assumptions, scope or details changed because of this session (something now done, a dependency added or removed, a design decision that affects it), propose a comment or edit. For every deferred item — out-of-scope bugs found, options set aside for later, follow-up work — propose a new issue. Show the user the list, then make the approved changes yourself, following the repo's issue-tracker conventions.
 3. **Clean up.** Once the branch is pushed (or the user says so), have the Impl agent remove its worktree.
+
+Record the outcome of steps 1 and 2 (`pushed`, `pr`, `trackerChanges`) in `session.json` and render the report again.
