@@ -8,7 +8,19 @@
       "description": "Dan Wood's agent skills",
       "source": "./",
       "strict": false,
-      "skills": ["./skills/prose-review", "./skills/create-verification-skill", "./skills/feature-map", "./skills/task-shepherd"]
+      "skills": [
+        "./skills/code-carve",
+        "./skills/code-polish",
+        "./skills/code-structure-review",
+        "./skills/type-precision-review",
+        "./skills/test-review",
+        "./skills/comment-slayer",
+        "./skills/naming-review",
+        "./skills/prose-review",
+        "./skills/create-verification-skill",
+        "./skills/feature-map",
+        "./skills/task-shepherd"
+      ]
     },
     {
       "name": "herdr-autoname",
