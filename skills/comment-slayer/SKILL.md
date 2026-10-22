@@ -2,7 +2,6 @@
 name: comment-slayer
 description: "Deletes comments that don't earn their place. Strips narration, banners, commented-out code and unjustified suppressions, and flags code that only made sense because a comment propped it up. Harsher than prose-review by design — default verdict is delete. Use for /comment-slayer, or as the aggressive reviewer in a code-polish or code-carve roster."
 argument-hint: "[path|commit|range|branch|PR#] [--kill-only|--prose-only] [--fix]"
-disable-model-invocation: true
 ---
 
 # Comment Slayer
