@@ -2,7 +2,6 @@
 name: naming-review
 description: "Review the function, variable, parameter, type, constant, schema, and test-helper names a change introduced. Recommends a rename only where the current name hides meaning, creates ambiguity, or misstates behavior. Use for /naming-review, or as the naming reviewer in a code-polish roster."
 argument-hint: "[commit|range|branch|PR#|path — defaults to the working tree]"
-disable-model-invocation: true
 ---
 
 # Naming Review

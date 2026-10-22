@@ -2,7 +2,6 @@
 name: code-structure-review
 description: "Strict structural review of a change: abstraction quality, spaghetti growth, file sprawl, layer and ownership boundaries, and the code-judo move that would delete whole categories of complexity. Behavior-preserving, report-only. Use for /code-structure-review, or as the structural reviewer in a code-carve roster."
 argument-hint: "[commit|range|branch|PR#|path — defaults to the current change]"
-disable-model-invocation: true
 ---
 
 # Code Structure Review

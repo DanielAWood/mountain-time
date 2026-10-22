@@ -2,7 +2,6 @@
 name: prose-review
 description: Review comments and docs — delete the ones that don't earn their place, fix the rest
 argument-hint: "[path|PR#|branch] [--fix]"
-disable-model-invocation: true
 ---
 
 # Prose Review

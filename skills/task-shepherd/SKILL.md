@@ -99,6 +99,10 @@ For each finding: round number, reviewer, short description, decision (accepted 
 
 Pass the reviewer the rejected and modified entries as "already decided — do not re-raise unless you have a materially new argument."
 
+Pass them as **findings**, one entry per finding, each carrying its own specific claim: the `path:line` it was about, what it asserted, what was decided (rejected or modified), and the one-line reason.
+
+**Never describe a function, file, module or area as settled, and never merge several entries into one.** "`parseManifest` was settled in round 3" tells the reviewer to skip a whole function. "Round 3 rejected the claim that `parseManifest` should take a non-empty tuple, because X" tells it exactly one sentence not to write again. The first is how a real defect survives round after round: the reviewer sees it, reads the area as out of bounds, and talks itself out of reporting it. If an entry's `short` cannot be read as a claim about a specific line, rewrite it before passing it on; if you cannot, leave the entry out rather than hand over an area.
+
 ## Session record
 
 Each session gets a directory `~/.agents/task-shepherd/reports/<repo>/<YYYY-MM-DD>-<slug>/`, where `<slug>` is the issue number or a short kebab-case name for the task (append `-2`, `-3` if it exists). It holds:
@@ -136,6 +140,7 @@ Write to `session.json` whenever something is decided: each question answered, e
 }
 ```
 
+- `short` is what a later reviewer receives as an already-decided finding, so write it as a claim about a place: "the `!isReady(first)` re-check at `manifest.ts:42` is redundant", never "`parseManifest`" or "the manifest parser".
 - `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record.
 - `revisit` marks a rejected or deferred finding worth coming back to.
 - Verification has no findings of its own; record it as a round with its result in `tests` and any bugs it found as accepted findings.

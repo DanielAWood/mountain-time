@@ -2,7 +2,6 @@
 name: code-polish
 description: "Single entry point for the surface pass: runs every prose, comment, and naming review over one scope, collates them into one report, and applies only changes that cannot alter behavior. Use for /code-polish, as the final clarity round after structural review is finished, or when the code is right and only how it reads is left."
 argument-hint: "[path|commit|range|branch|PR#] [--fix]"
-disable-model-invocation: true
 ---
 
 # Code Polish
@@ -40,6 +39,8 @@ One entry per line, naming what to invoke:
 `skill:` and `agent:` name something installed in the harness. `file:` is a path to an instruction file the reviewer reads and follows exactly — use it for a review that lives as a slash command, a prompt file, or anything the harness won't let a reviewer invoke directly. Trailing arguments pass through to the entry.
 
 With no roster file, run those three defaults. Check each entry resolves; if one doesn't, say so and carry on with the rest — never silently substitute another.
+
+**A roster file replaces the defaults; it does not extend them.** The first file that exists is the whole roster, so a project or personal roster written before a default was added silently drops it, and the pass goes on looking complete. Before running, diff the resolved roster against the three defaults above and **name every default it omits** — say which review therefore goes unrun this round, and that adding a line to the resolved roster file is what fixes it.
 
 `comment-slayer --prose-only` suppresses its structural flags, which `code-carve` has already dealt with, and leaves its prose verdicts.
 

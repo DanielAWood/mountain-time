@@ -2,7 +2,6 @@
 name: test-review
 description: "Review the tests a change adds or touches on three axes: assertions that cannot fail, assertions weaker than they should be, and tests coupled to internals rather than the interface. Report-only unless --fix. Use for /test-review, or as the test reviewer in a code-carve roster."
 argument-hint: "[path|commit|range|branch|PR#] [--fix]"
-disable-model-invocation: true
 ---
 
 # Test Review
@@ -95,12 +94,32 @@ Flag:
 
 The remedy is always to move the test out to the interface a caller uses, and delete the one that reached inside. Where the test can only reach the behavior through an internal seam — because the seam exists purely so a test can get in — that is a production-code defect and belongs to `code-structure-review`. Report it here as a note naming that handoff, and do not restructure production code yourself.
 
+## A Sound Test Can Be Evidence About the Code
+
+Sometimes a test asserts an outcome the production code should probably not produce. None of the three axes has anything to say about it: the assertion can fail, it covers the whole object, and it is written at the interface.
+
+Do not resolve that doubt here, in either direction. Loosening the assertion deletes the only record of what the code does, and rewording the production doc comment so the two agree makes the documentation consistent with code that may be the defect. Both read as tidying and both bury the question.
+
+Report it as a note handing it over — to `error-path-review` where it is an error whose message names one of several items that satisfy one condition, or to the project's correctness review otherwise. The giveaway is an expected value that reads as a single-cause answer where the condition under test can hold for several items at once: one id, one filename, or the word "first" in the assertion, the test name, or the doc comment it was written from.
+
+Write the note as a **question with evidence**, not an impression, because a hunch is what a receiving reviewer is entitled to drop:
+
+```
+handoff → <addressee>
+path/to/file.test.ts:28  the assertion, quoted
+the doubt → stated as a question about the behavior, not about the test
+evidence → the concrete input where two or more items satisfy the condition at once
+```
+
+Without that input the note is speculation; drop it rather than send it.
+
 ## Verify Before Reporting
 
 1. **It exists and is in scope.** The change added or touched this test.
 2. **A tautology finding genuinely cannot fail.** Name the implementation bug it would miss.
 3. **A completeness finding's proposed object is complete and deterministic.** Name what makes it stable — fixed clock, injected ids.
 4. **A coupling finding names the interface** the test should be written against, and confirms that interface already reaches the behavior.
+5. **A handoff note names the concrete input** where two or more items satisfy the condition the test pins at once. This is the same bar the receiving reviewer applies.
 
 Where practical, prove the finding rather than asserting it: a proposed assertion should **fail against a deliberately broken implementation**, and a proposed whole-object equality should pass against the real one — a green run confirms the shape is exact. Say which proposals you checked this way and which you did not.
 
@@ -117,9 +136,11 @@ why it fails → one line: what makes it unable to fail, what it misses, or what
 proposed → the assertion that would break if the behavior broke
 ```
 
-Then a one-line tally by axis, plus any out-of-scope notes and any handoffs to `code-structure-review`.
+Then a one-line tally by axis, plus any out-of-scope notes, any **seam handoffs** to `code-structure-review`, and **any handoff notes** under "A Sound Test Can Be Evidence About the Code", each with its `path:line`, its addressee, the doubt as a question, and the input that evidences it. A handoff note is not a finding and carries no verdict, but it is the one item in this report whose whole purpose is to be read by someone else — leave it out of the tally and nothing downstream knows it exists.
 
-If the change's tests are sound, say so in one line. Do not manufacture findings.
+If the change's tests are sound on all three axes **and no handoff note is open**, say so in one line. Where the axes are clean but a note is open, say that instead: the tests are sound and the behavior one of them pins is in question. Never report "the tests are sound" over an open note.
+
+Do not manufacture findings.
 
 ## Fix Mode
 
@@ -136,3 +157,4 @@ With `--fix`, apply the findings after reporting, then run the affected tests an
 - Do not add tests for coverage. This review judges the tests the change brought, not the ones it didn't.
 - Do not report a pre-existing test as a finding.
 - Do not propose an assertion you have not checked against the object's real shape.
+- Do not settle a doubt about whether the behavior under test is right by loosening the assertion or rewording a production doc comment. Hand it over as a note.
