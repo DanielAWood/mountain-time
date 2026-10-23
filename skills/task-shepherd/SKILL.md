@@ -1,6 +1,6 @@
 ---
 name: task-shepherd
-description: "Shepherd a unit of work (e.g. a GitHub issue) from implementation to done: one long-lived implementation agent, then rounds of fresh review agents, with the user deciding every finding (or the shepherd deciding, with --unsupervised). Usage: /task-shepherd [--unsupervised] <issue-url or task description>"
+description: "Shepherd a unit of work (e.g. a GitHub issue) from implementation to done: one long-lived implementation agent, then rounds of fresh review agents, with the user deciding every finding (or the shepherd deciding, with --unsupervised). Ends with a retrospective on how the session itself ran, unless --no-retro. Usage: /task-shepherd [--unsupervised] [--no-retro] <issue-url or task description>"
 disable-model-invocation: true
 ---
 
@@ -16,6 +16,8 @@ If no unit of work was provided as an argument, ask the user what to work on bef
 
 - **Supervised (default):** the user decides every finding and answers every question.
 - **Unsupervised (`--unsupervised` in the arguments):** you make the decisions the user would otherwise make — on the Impl agent's recommendations and its open questions — and only stop for the user when confidence is low or the result is high risk (see **Unsupervised decisions**). Everything else in this skill stays the same: the rounds, the ledger, tests green, verification. Strip the flag before passing the unit of work to the Impl agent.
+
+`--no-retro` skips the session retro (see **Session retro**); without it the retro runs unless `session-retro` is unavailable. Strip it from the arguments too, along with `--unsupervised`, before the unit of work reaches the Impl agent — flags addressed to you are not part of the task.
 
 ### Unsupervised decisions
 
@@ -51,6 +53,8 @@ Then reconcile against the template before starting work:
 3. Check each named skill is installed. If one isn't, say so and ask again; never substitute another skill.
 
 `none` is a deliberate answer, not a gap: skip that round and don't ask again. An empty value means not yet chosen.
+
+One review step is exempt from step 3: `session-retro` has no key here, so if it isn't installed the retro is skipped rather than asked about — see **Session retro**.
 
 ## Implementation
 
@@ -135,6 +139,27 @@ Write to `session.json` whenever something is decided: each question answered, e
       ] }
   ],
   "stopReason": "clean | thrash | cap",
+  "retro": {
+    "skill": "session-retro",
+    "skipped": false,
+    "skipReason": "no-retro-flag | skill-not-installed | unusable-output | null",
+    "ranAt": "<ISO 8601> | null",
+    "findings": [
+      { "id": "retro.1",
+        "category": "process", "proposedCategory": false,
+        "short": "", "finding": "", "evidence": "", "cost": "",
+        "target": { "repo": "", "artifact": "" },
+        "proposedAction": "issue",
+        "decision": "accepted | rejected | deferred | null",
+        "decidedBy": "user | shepherd | null", "reason": "" },
+      { "id": "retro.2",
+        "category": "<coined kebab-case slug>", "proposedCategory": true,
+        "short": "", "finding": "", "evidence": "", "cost": "",
+        "target": { "skill": "", "artifact": "" },
+        "proposedAction": "issue",
+        "decision": null, "decidedBy": null, "reason": "" }
+    ]
+  },
   "outcome": { "finalSha": null, "pushed": false, "pr": null,
                "trackerChanges": [ { "action": "comment | edit | create", "title": "", "url": null, "status": "proposed | done | declined" } ] }
 }
@@ -144,6 +169,11 @@ Write to `session.json` whenever something is decided: each question answered, e
 - `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record.
 - `revisit` marks a rejected or deferred finding worth coming back to.
 - Verification has no findings of its own; record it as a round with its result in `tests` and any bugs it found as accepted findings.
+- `retro` is always written, even when the retro is skipped, so the record says the retro didn't run rather than leaving it unanswered. A skip is exactly `"skipped": true`, `"ranAt": null`, an empty `findings` array, and one of three `skipReason` values — `no-retro-flag` (the user passed `--no-retro`), `skill-not-installed`, or `unusable-output` (it ran but returned nothing you could record). Those three are the whole set; `ranAt` carries a timestamp exactly when `skipped` is false. **A retro that ran and found nothing is not a skip**: it is `skipped: false` with an empty `findings` array, and the report says so differently. Write the block as soon as the retro agent returns (or as soon as you know it is skipped), set `updatedAt`, and write it again once the findings are decided.
+- `target` is one shape or the other, never both keys: `{ "repo", "artifact" }` for an artifact in the work repo, `{ "skill", "artifact" }` for one inside a skill that isn't — the second entry above shows that arm. The tracker step branches on which key is present, so copy whichever the retro sent rather than normalising it.
+- Between the retro returning and its findings being decided in **Done**, `decision` and `decidedBy` are `null`: that is the state the record is written and rendered in, so they are nullable rather than absent.
+- `retro.findings` come back from the retro as JSON, in rank order; store them in that order, which is what the `#` column and each `retro.<n>` id mean. Copy the retro's fields across unaltered — `reason` is the one field you author, and the rule below binds it.
+- The retro's fields are the exception to recording verbatim text: they must contain no quoted finding, answer, tool output or file contents — see **Session retro**. That includes the `reason` you write when deciding one.
 
 The report lives on this machine, so give the user a copy command: `scp <output of hostname -f>:<session dir>/report.html .`
 
@@ -174,9 +204,28 @@ Spawn one reviewer to run the `clarity-review` skill from the config on the late
 
 If the project has a verify/UAT skill or documented manual check (e.g. a `verify-<app>` skill), have the Impl agent run it now, against the final code — reviews can change behaviour, so a check run before them doesn't count. Relay anything it needs from the user (sign-ins, credentials refreshes). Bugs it finds are fixed and amended, tests green. If there's no such check, skip this step.
 
+## Session retro
+
+Once the code is settled, the session itself gets reviewed. Spawn one agent to run the `session-retro` skill: a fresh `general-purpose` agent, not a `fork` — it reasons with clean eyes like every other reviewer here, and your context is the thing it would otherwise inherit its conclusions from.
+
+Run it **after verification and before the tracker step of Done**, while the Impl agent's worktree is still present: the retro checks the artifacts it names against it. It runs unless the user passed `--no-retro`, in which case record the skip in the one shape given in **Session record** and go to **Done**.
+
+The stop reason is one of the retro's signals, so `stopReason` has to be in the record before it runs: write it when the rounds stop, not in **Done**.
+
+Its prompt needs:
+
+- The session directory path. `session.json` is its evidence; it reads the ledger itself rather than being told what's in it.
+- `--worktree <path>` — the Impl agent's worktree from the latest status block. The skill requires it, and it is the only repo the retro reads.
+- "This is read-only. Do not edit, stage or commit anything, in any repo."
+- "Cite counts, round numbers, decision ids and paths. Never quote finding text, answer text, tool output or file contents."
+
+The retro returns at most seven ranked findings as JSON. Record them in `retro` with `decision` and `decidedBy` null (see **Session record**), set `ranAt` and `updatedAt`, and render the report. They are decided with the final report, in **Done** — not in a round of their own.
+
+Two other things make it a skip, and neither is a clean result: the skill isn't installed, or it ran and returned output you cannot parse into the record. In both, don't improvise a retro yourself and don't let it block the session — record the skip, in the shape **Session record** gives, and carry on to **Done**. **An empty findings array is not one of them** — that retro ran. The retro is the one review step with no entry in the config, which is why its missing-skill case is handled here rather than there.
+
 ## Done
 
-The work is done once the last of verification, the clarity round or the code quality rounds has landed with tests green. Set `status`, `endedAt`, `stopReason` and `outcome.finalSha` in `session.json`, render the report, and give the user a short final report — the full ledger and, in unsupervised mode, the audit of your own decisions are in the HTML, not the chat:
+The work is done once the last of verification, the clarity round or the code quality rounds has landed with tests green. Set `status`, `endedAt` and `outcome.finalSha` in `session.json` (`stopReason` is already written — see **Session retro**), render the report, and give the user a short final report — the full ledger and, in unsupervised mode, the audit of your own decisions are in the HTML, not the chat:
 
 - Final commit sha, branch and scope
 - Test and verification status
@@ -185,10 +234,29 @@ The work is done once the last of verification, the clarity round or the code qu
 - Only what needs the user now: anything still escalated, and findings marked `revisit`
 - The report path and the `scp` line
 
+Then append the retro's findings as one compact table, in rank order. It carries its own columns, but it is decided the same way a review round is — per finding, or in bulk ("accept all", "accept all except 3"):
+
+| # | Finding (short) | Category | Target | Decision |
+|---|---|---|---|---|
+
+The target column names the owner beside the path (`skill:session-retro · SKILL.md`), because `SKILL.md` is a different file in every skill and this is the table the user decides from.
+
+Each finding is **accepted, rejected or deferred**, and that is the whole vocabulary. There is deliberately no `modified`: a retro finding is a proposal, so the decisions are to propose it, not to, or not yet — and a remedy you would shape differently goes in `reason`, the one field you author. There is no escalation either: you show this table with your decisions on it before anything is filed, so a decision the user would have made differently is in front of them with time to say so, and the tracker step below needs their approval in both modes anyway.
+
+The full text, evidence and cost are in `report.html`; the table carries the short line only. In unsupervised mode you decide them, and show the table with your decisions and a one-line reason each. Write every decision, `decidedBy` and `reason` back to `retro.findings`, set `updatedAt`, and render the report.
+
+If the retro was skipped, say so in one line with its cause. If it ran and reported nothing, say *that* — a session with no retro findings is the clean result, not an empty table to print.
+
 Then (in both modes, these need the user's approval — pushing, opening PRs and changing the tracker are visible to others):
 
 1. **Ship.** Offer to push and open a PR, following the repo's conventions. If the user agrees, the Impl agent does it.
 2. **Update the tracker.** Read the open issues. For any whose assumptions, scope or details changed because of this session (something now done, a dependency added or removed, a design decision that affects it), propose a comment or edit. For every deferred item — out-of-scope bugs found, options set aside for later, follow-up work — propose a new issue. Show the user the list, then make the approved changes yourself, following the repo's issue-tracker conventions.
+
+   Every **accepted** retro finding is proposed here too, as a new issue — `action: "create"` — against its own target. Nothing is applied to a file: a retro finding is an issue, and whoever picks it up decides what to write. A deferred finding isn't proposed at all: it belongs to the user's own list, and the report already gives it a home under Open threads, so filing it would turn "not now" into a tracker item nobody chose.
+
+   Which key `target` carries says where the issue goes. `repo` is the work repo: file there like anything else in this step. `skill` names a *skill*, not a repo, because the retro cannot see where a skill it isn't looking at came from — so you resolve it, from the directory that skill is installed in. If that directory is a git checkout of a repo the user has, file there. If it's an installed copy — a plugin directory, or anything `npx skills` wrote — there is no tracker to file against: show the user the proposal with the reason that no owning repo could be resolved, and leave it `proposed` unless they decline it.
+
+   Creating issues needs the user's approval even in unsupervised mode, by the same rule as everything else in this step. Record each outcome in `outcome.trackerChanges` alongside the rest, naming the finding id in the title so the record ties the two together.
 3. **Clean up.** Once the branch is pushed (or the user says so), have the Impl agent remove its worktree.
 
 Record the outcome of steps 1 and 2 (`pushed`, `pr`, `trackerChanges`) in `session.json` and render the report again.
