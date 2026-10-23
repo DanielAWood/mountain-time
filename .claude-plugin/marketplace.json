@@ -20,7 +20,8 @@
         "./skills/prose-review",
         "./skills/create-verification-skill",
         "./skills/feature-map",
-        "./skills/task-shepherd"
+        "./skills/task-shepherd",
+        "./skills/session-retro"
       ]
     },
     {

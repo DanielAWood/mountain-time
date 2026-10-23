@@ -64,6 +64,9 @@ const app = document.getElementById("app");
 const rounds = S.rounds || [];
 const questions = S.questions || [];
 const findings = rounds.flatMap(r => (r.findings || []).map(f => ({ ...f, round: r })));
+const retro = S.retro || null;
+// A skipped retro has no live findings, whatever the record left in the array.
+const retroFindings = (retro && !retro.skipped && retro.findings) || [];
 const DECISIONS = ["accepted", "rejected", "modified", "deferred"];
 const REC_TO_DECISION = { accept: "accepted", reject: "rejected", modify: "modified" };
 
@@ -86,6 +89,30 @@ const sha = v => v ? el("code", {}, String(v).slice(0, 10)) : "—";
 const section = (title, ...body) => app.append(el("h2", {}, title), ...body.flat());
 const empty = text => el("p", { class: "empty" }, text);
 const against = f => f.implRecommendation && REC_TO_DECISION[f.implRecommendation] !== f.decision;
+const block = (label, text) => text ? [el("div", { class: "label" }, label), el("div", { class: "verbatim" }, text)] : [];
+
+// colspan follows the cell count, so adding a column can't leave a detail row short.
+function expandableRow(cells, detailChildren, rowClass) {
+  const detail = el("tr", { class: "detail", hidden: true }, el("td", { colspan: cells.length }, ...detailChildren));
+  const row = el("tr", { class: rowClass, onclick: () => { detail.hidden = !detail.hidden; } }, ...cells);
+  return [row, detail];
+}
+
+const decisionRows = fs => el("table", {}, el("tbody", {}, fs.map(f => el("tr", {},
+  el("td", { class: "mono" }, f.id || ""), el("td", {}, f.short || ""),
+  el("td", {}, pill(f.decision)), el("td", {}, f.reason || "")))));
+const decisionList = (fs, emptyText) => fs.length ? decisionRows(fs) : empty(emptyText);
+
+// `target` carries one owner key, `repo` or `skill`, and the tracker step branches on which.
+// Both keys means the record is malformed, so say so rather than picking an arm.
+function targetLabel(t) {
+  const keys = ["repo", "skill"].filter(k => k in t);
+  const owner = keys.length > 1 ? "MALFORMED: repo and skill both set"
+    : keys[0] === "skill" ? `skill:${t.skill || "—"}`
+    : keys[0] === "repo" ? (t.repo || "—")
+    : "—";
+  return `${owner} · ${t.artifact || "—"}`;
+}
 
 function header() {
   const title = S.issueUrl ? el("a", { href: S.issueUrl }, S.unitOfWork || S.issueUrl) : (S.unitOfWork || "Untitled session");
@@ -118,6 +145,7 @@ function tiles() {
     tile(count(against), "against Impl rec."),
     tile(rounds.filter(r => r.kind === "code-quality").length, "code-quality rounds"),
     tile(questions.length, "questions"),
+    retro ? tile(retro.skipped ? "—" : retroFindings.length, "retro findings") : null,
   ));
 }
 
@@ -151,29 +179,26 @@ function findingsTable() {
     (!filters.escalated || String(!!f.escalated) === filters.escalated) &&
     (!filters.kind || f.round.kind === filters.kind);
 
-  function detail(f) {
-    const block = (label, text) => text ? [el("div", { class: "label" }, label), el("div", { class: "verbatim" }, text)] : [];
-    return el("tr", { class: "detail", hidden: true }, el("td", { colspan: 7 },
-      ...block("Finding", f.finding),
-      ...block(`Impl recommendation: ${f.implRecommendation || "—"}`, f.implReason),
-      ...block("Decision reason", f.reason),
-      f.reraiseOf ? el("div", { class: "label" }, `Re-raise of ${f.reraiseOf}`) : "",
-      f.severity ? el("div", { class: "label" }, `Severity: ${f.severity}`) : ""));
-  }
+  const detailChildren = f => [
+    ...block("Finding", f.finding),
+    ...block(`Impl recommendation: ${f.implRecommendation || "—"}`, f.implReason),
+    ...block("Decision reason", f.reason),
+    f.reraiseOf ? el("div", { class: "label" }, `Re-raise of ${f.reraiseOf}`) : "",
+    f.severity ? el("div", { class: "label" }, `Severity: ${f.severity}`) : "",
+  ];
 
   function render() {
     tbody.replaceChildren();
     for (const f of findings.filter(matches)) {
-      const d = detail(f);
-      const row = el("tr", { class: `finding${against(f) ? " against" : ""}`, onclick: () => { d.hidden = !d.hidden; } },
+      tbody.append(...expandableRow([
         el("td", { class: "mono" }, f.id || ""),
         el("td", {}, f.short || ""),
         el("td", {}, pill(f.implRecommendation)),
         el("td", {}, pill(f.decision)),
         el("td", {}, f.decidedBy || "", f.escalated ? " (escalated)" : ""),
         el("td", {}, f.reason || ""),
-        el("td", {}, f.revisit ? "revisit" : ""));
-      tbody.append(row, d);
+        el("td", {}, f.revisit ? "revisit" : ""),
+      ], detailChildren(f), `finding${against(f) ? " against" : ""}`));
     }
   }
   render();
@@ -204,27 +229,63 @@ function shepherdCalls() {
   const decided = findings.filter(f => f.decidedBy === "shepherd");
   const escalated = findings.filter(f => f.escalated);
   const answered = questions.filter(q => q.answeredBy === "shepherd");
-  const list = fs => fs.length
-    ? el("table", {}, el("tbody", {}, fs.map(f => el("tr", {},
-        el("td", { class: "mono" }, f.id || ""), el("td", {}, f.short || ""),
-        el("td", {}, pill(f.decision)), el("td", {}, f.reason || "")))))
-    : empty("None.");
+  const decidedRetro = retroFindings.filter(f => f.decidedBy === "shepherd");
   section("Shepherd's calls",
-    el("div", { class: "label" }, "Findings decided by the shepherd"), list(decided),
-    el("div", { class: "label" }, "Escalated to the user"), list(escalated),
+    el("div", { class: "label" }, "Findings decided by the shepherd"), decisionList(decided, "None."),
+    el("div", { class: "label" }, "Escalated to the user"), decisionList(escalated, "None."),
+    decidedRetro.length
+      ? [el("div", { class: "label" }, "Retro findings decided by the shepherd"), decisionRows(decidedRetro)]
+      : [],
     el("div", { class: "label" }, "Questions answered by the shepherd"),
     answered.length ? qa(answered) : empty("None."));
 }
 
+function retroSection() {
+  if (!retro) return section("Session retro", empty("No retro recorded."));
+  const label = (...parts) => el("div", { class: "label" }, parts.filter(Boolean).join(" · ") || "—");
+  const skill = retro.skill && `skill ${retro.skill}`;
+  if (retro.skipped) {
+    return section("Session retro", label(skill),
+      empty(retro.skipReason ? `Skipped for this session: ${retro.skipReason}` : "Skipped for this session."));
+  }
+  const head = label(skill, retro.ranAt && `ran ${retro.ranAt}`);
+  if (!retroFindings.length) return section("Session retro", head, empty("No retro findings reported."));
+
+  const tbody = el("tbody");
+  for (const f of retroFindings) {
+    const target = f.target || {};
+    tbody.append(...expandableRow([
+      el("td", { class: "mono" }, f.id || ""),
+      el("td", {}, f.short || ""),
+      el("td", {}, f.category || "", f.proposedCategory ? " (proposed)" : ""),
+      el("td", { class: "mono" }, targetLabel(target)),
+      el("td", {}, pill(f.decision)),
+      el("td", {}, f.decidedBy || ""),
+    ], [
+      ...block("Finding", f.finding),
+      ...block("Evidence", f.evidence),
+      ...block("Cost", f.cost),
+      ...block("Decision reason", f.reason),
+      el("div", { class: "label" }, `Target: ${targetLabel(target)}`),
+    ], "finding"));
+  }
+  section("Session retro", head,
+    el("div", { class: "filters" }, el("span", {}, "Ranked by cost of recurrence. Click a row for evidence and cost.")),
+    el("table", {},
+      el("thead", {}, el("tr", {}, ...["ID", "Finding", "Category", "Target", "Decision", "Decided by"].map(h => el("th", {}, h)))),
+      tbody));
+}
+
 function openThreads() {
   const open = findings.filter(f => f.decision === "deferred" || f.revisit);
+  const openRetro = retroFindings.filter(f => f.decision === "deferred");
   const tracker = (S.outcome || {}).trackerChanges || [];
   section("Open threads",
-    open.length
-      ? el("table", {}, el("tbody", {}, open.map(f => el("tr", {},
-          el("td", { class: "mono" }, f.id || ""), el("td", {}, f.short || ""),
-          el("td", {}, pill(f.decision)), el("td", {}, f.reason || "")))))
-      : empty("No deferred or revisit-worthy findings."),
+    decisionList(open, "No deferred or revisit-worthy findings."),
+    openRetro.length
+      ? [el("div", { class: "label", style: "margin-top:12px" }, "Deferred retro findings"),
+         decisionRows(openRetro)]
+      : [],
     el("div", { class: "label", style: "margin-top:12px" }, "Tracker changes"),
     tracker.length
       ? el("ul", {}, tracker.map(t => el("li", {},
@@ -239,6 +300,7 @@ timeline();
 findingsTable();
 questionsSection();
 shepherdCalls();
+retroSection();
 openThreads();
 </script>
 </body>
