@@ -58,7 +58,7 @@ Where the harness has subagents, launch every roster entry **concurrently in a s
 
 ## Collate
 
-Present one report grouped by reviewer, preserving each finding's `path:line`, the current text, and the proposed change. Say plainly when a reviewer returned nothing.
+Present one report grouped by reviewer, preserving each finding's `path:line`, the current text, and the proposed change. Anything the applier needs in order to avoid a pattern-based edit has to survive collation. Say plainly when a reviewer returned nothing.
 
 Then reconcile across reviewers:
 
