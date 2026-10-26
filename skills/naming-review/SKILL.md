@@ -73,5 +73,6 @@ Present high-confidence candidates first. For each:
 2. `currentName` → `suggestedName`.
 3. One concrete reason based on the identifier's actual role.
 4. The commit that introduced the declaration, as evidence the name is in scope. A candidate without this does not get reported.
+5. Every reference, as path:line — the declaration and each use, with a count. This is the applier's checklist and their verification: N sites in, N edits out. A finding that gives only the declaration is an invitation to pattern-replace, which can hit unintended lines.
 
 Group related locals from one scope into one finding. Separate production-code candidates from lower-priority test-only candidates where it helps. Note names already corrected in the worktree, and say explicitly when no further candidates were found. End with any names considered but intentionally retained, where that shows the review was calibrated.
