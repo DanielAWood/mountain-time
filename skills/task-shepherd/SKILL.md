@@ -32,10 +32,25 @@ For the Impl agent's open questions, answer them yourself when the issue, the re
 - The change deletes or weakens tests, or widens the scope beyond the unit of work.
 - The decision reverses one the user made earlier in this session.
 - Anything needing the user's hands: sign-ins, credentials, secrets.
+- **The review has outgrown the artifact** — see **Proportionality**. Every other trigger here is about the risk of a change; this one is about the cost of continuing to look.
 
 When you escalate, decide everything in the round that isn't flagged, then ask about just the flagged items using the same table and verbatim text as supervised mode. If a push-notification tool is available, use it so the user knows you're blocked. Wait for the answer before remediation begins.
 
 After each round, post the table with your decisions filled in and a one-line reason for each, so the user can follow along or step in — but don't wait for a reply.
+
+## Proportionality
+
+Each round costs real tokens and real wall-clock, and nothing else in this skill stops a review that has stopped being worth running. The rounds end on a clean result, on thrash, or at the cap — all three are properties of the *findings*, and none of them fires when the findings keep arriving but stop mattering.
+
+So judge it before spawning each new reviewer, in **both modes**. Put the question to the user when the yield no longer justifies another round:
+
+- Two or more consecutive rounds whose findings are all surface or consistency work on an artifact that is not production code.
+- The production code has converged — no correctness finding for several rounds — and the remaining yield is prose, naming, or documentation drift.
+- The Impl agent has raised a scope or proportionality concern more than once. Treat the second one as a signal about the review, not about the finding, and do not authorise past it.
+
+Ask plainly — *is another round of this proportionate?* — with the round count, what the last two rounds actually yielded, and your recommendation. This goes to the user in supervised mode as much as unsupervised: they are deciding findings, not watching the budget, and a round they would have stopped is a round they paid for. In unsupervised mode it is an escalation like any other, so it waits for their answer.
+
+If the rounds are stopped while a round is in flight, that is a cancellation, not a clean finish — record it as **Session record** describes.
 
 ## Configuration
 
@@ -71,6 +86,7 @@ Its spawn prompt should contain the unit of work plus this brief (adapt as neede
 > - Follow the repo's commit conventions (check CLAUDE.md). Unless told otherwise: one commit for the unit of work, with all later remediation amended into it.
 > - Keep tests green. Run the test suite before ending any turn where you changed code, and report the result. Any accepted change that alters behaviour needs a test that pins the new behaviour — review fixes are a common source of new bugs.
 > - Later, you'll receive review findings. You don't review your own work, but you know best why things were done the way they were — for each finding give a recommendation (accept / reject / modify) with a short justification. You may run experiments to check a finding, but restore everything afterwards and say what you tried. Don't act on findings until told which ones the user approved; once told, carry out the approved remediation autonomously.
+> - **Remediate exactly what was approved, and no more.** Each accepted finding arrives with a scope — one site, or a named set of sites. Anything else you think also needs changing is a *new proposal*: report it with the remedy and leave the code alone. Writing the remedy stronger than it was approved, or tidying the neighbourhood while you are in there, is how the next review round gets its findings — and they will be yours, against work nobody approved. If an approved remedy turns out to be unimplementable as scoped, say so and stop rather than widening it.
 > - End every turn with a status block:
 >   - Worktree: <path>
 >   - Branch: <name>
@@ -92,8 +108,24 @@ Every review round, of either kind, follows this process:
    |---|---|---|---|
 
 3. Get a decision on each finding. The user can respond per finding, or use shortcuts like "accept all recommended", "accept all", or "accept recommended except 3, 5". Relay any questions or clarifications back and forth until every finding is decided. (Unsupervised: you decide, per **Unsupervised decisions**, and the user decides only what you escalate.)
-4. Send the decisions to the Impl agent and let it remediate. It must finish with tests green and report its status block.
-5. Record every finding and its decision in the ledger (below), along with the commit sha after remediation.
+4. For each accepted finding, settle whether its defect is an **instance** or a **class** — see **Class findings**. Send that with the decision.
+5. Send the decisions to the Impl agent and let it remediate. It must finish with tests green and report its status block.
+6. Record every finding and its decision in the ledger (below), along with the commit sha after remediation.
+
+A decision is a routing instruction, not text for the artifact. Write it to tell the Impl agent *which* defect to fix and how far to go — not in a register that can be pasted into the file under review. A one-line reason written as finished prose tends to arrive in the artifact almost verbatim, and then it is the next round's finding, authored by the reviewer's own shepherd and read by nobody before it landed.
+
+## Class findings
+
+A finding describes an instance. Its defect is sometimes a **class**: one rule, invariant, guard or contract stated in several places, where the finding happens to name the site the reviewer looked at. Remediating the named site and stopping is what produces round after round of near-identical findings — each round sweeps one more site, and the reviewer that finds the next one looks like it found something new.
+
+So for every accepted finding, settle before remediation which it is:
+
+- **Instance** — the defect is local to the site named. Remediate it.
+- **Class** — the same defect exists wherever the rule is stated. Remediation must sweep **every** site, and the Impl agent reports the list it swept. Where the sweep is genuinely out of scope, decline it as instance-only *explicitly*, record that in the ledger, and pass it to the next reviewer as a decided finding — otherwise the next round re-raises it and nothing records that the narrowing was deliberate.
+
+The reviewer is often the one that tells you. A finding that counts sites ("four of the five call sites", "both halves of the rule", "the sibling at `:211` was left byte-identical") is naming a class. So is a finding whose own diagnosis is duplication — *the diff copied the guard into four files instead of extracting it* is a finding about the fifth file, whether or not the reviewer noticed.
+
+Where the class is "this rule is stated in N places at all", the remedy that ends the loop is usually to make it stated once. Prefer that over a wider sweep, and say so when you relay.
 
 ## Ledger
 
@@ -131,14 +163,16 @@ Write to `session.json` whenever something is decided: each question answered, e
   "rounds": [
     { "n": 1, "kind": "code-quality | clarity | verification", "skill": "",
       "shaBefore": "", "shaAfter": "", "tests": "<pass/fail + command>",
+      "cancelled": false, "scopeNote": null,
       "findings": [
         { "id": "<round>.<index>", "short": "", "severity": null, "finding": "<verbatim>",
           "implRecommendation": "accept | reject | modify", "implReason": "<verbatim>",
           "decision": "accepted | rejected | modified | deferred", "decidedBy": "user | shepherd",
+          "defectScope": "instance | class | class-declined | null", "sweptSites": null,
           "reason": "", "escalated": false, "reraiseOf": null, "revisit": false }
       ] }
   ],
-  "stopReason": "clean | thrash | cap",
+  "stopReason": "clean | thrash | disproportionate | user-requested | cap",
   "retro": {
     "skill": "session-retro",
     "skipped": false,
@@ -166,8 +200,11 @@ Write to `session.json` whenever something is decided: each question answered, e
 ```
 
 - `short` is what a later reviewer receives as an already-decided finding, so write it as a claim about a place: "the `!isReady(first)` re-check at `manifest.ts:42` is redundant", never "`parseManifest`" or "the manifest parser".
-- `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record.
+- `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record. Point it at a **finding** id. When the thing this finding follows from was a question rather than a finding, leave it `null` and name the question in `reason` instead — a link to the nearest-looking finding makes the chain unreconstructable, which is worse than no link.
+- `defectScope` records the **Class findings** call: `instance`, `class` (swept — list the sites in `sweptSites`), or `class-declined` (a class narrowed to one site on purpose, with the reason in `reason`). It is `null` for a finding that was not accepted. A `class-declined` entry is passed to later reviewers like any other decided finding, so the narrowing is visible rather than re-raised.
 - `revisit` marks a rejected or deferred finding worth coming back to.
+- `cancelled` on a round means the rounds were stopped while that round was in flight. Its findings are whatever had arrived — set `revisit: true` on all of them, leave `implRecommendation` and `decision` as they stand, and say in `scopeNote` what had and hadn't reported. **A cancelled round's finding count is not comparable to a completed round's**, and `scopeNote` is also where to say when a round was deliberately scoped differently from a fresh sweep.
+- `stopReason` is the cause the rounds ended, and the five values are not interchangeable — the retro keys on it. `clean` is a round that produced nothing actionable. `thrash` and `cap` are as **Code quality rounds** describes. `disproportionate` is a stop under **Proportionality**. `user-requested` is the user stopping the rounds for any other reason. A stopped session recorded as `clean` tells the retro the loop converged when it did not; if none of the five fits, use the closest and say why in the round's `scopeNote` rather than inventing a sixth value.
 - Verification has no findings of its own; record it as a round with its result in `tests` and any bugs it found as accepted findings.
 - `retro` is always written, even when the retro is skipped, so the record says the retro didn't run rather than leaving it unanswered. A skip is exactly `"skipped": true`, `"ranAt": null`, an empty `findings` array, and one of three `skipReason` values — `no-retro-flag` (the user passed `--no-retro`), `skill-not-installed`, or `unusable-output` (it ran but returned nothing you could record). Those three are the whole set; `ranAt` carries a timestamp exactly when `skipped` is false. **A retro that ran and found nothing is not a skip**: it is `skipped: false` with an empty `findings` array, and the report says so differently. Write the block as soon as the retro agent returns (or as soon as you know it is skipped), set `updatedAt`, and write it again once the findings are decided.
 - `target` is one shape or the other, never both keys: `{ "repo", "artifact" }` for an artifact in the work repo, `{ "skill", "artifact" }` for one inside a skill that isn't — the second entry above shows that arm. The tracker step branches on which key is present, so copy whichever the retro sent rather than normalising it.
@@ -194,7 +231,13 @@ Have the reviewer run the `code-review` skill from the config on the scope. Then
 Repeat with a new reviewer each round until one of these happens:
 - A round produces no actionable findings (everything is rejected, or the reviewer found nothing).
 - Thrash: the ledger shows a round reversing an earlier accepted change as a matter of taste (round N changed X→Y, round N+1 suggests Y→X), or re-raising rejected findings without new arguments. Tell the user what you observed and stop the rounds. A reversal because the earlier change introduced a real bug is not thrash — note it and carry on.
+- The review has outgrown the artifact, and the user agrees it should stop — see **Proportionality**. The findings may still be real; this is the stop reason for when they have stopped being worth the round.
+- The user stops the rounds.
 - 10 rounds are done (hard cap).
+
+Each of those is a different `stopReason`, and they are not interchangeable: the retro reads the field as a signal about how the session ran, so a session that was stopped recorded as `clean` tells it the opposite of what happened.
+
+Expect most rounds after the first to find defects in the previous round's remediation rather than in the original work — that is the normal shape, not a sign something has gone wrong. What it *does* mean is that the round-1 scope is never the right scope again: give every later reviewer the previous round's diff, as **Reviews** describes.
 
 ### 2. Clarity review (once)
 
