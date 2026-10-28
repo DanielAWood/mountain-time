@@ -157,12 +157,20 @@ function timeline() {
     return DECISIONS.filter(d => fs.some(f => f.decision === d))
       .map(d => el("span", { class: d }, `${fs.filter(f => f.decision === d).length} ${d} `));
   };
+  // A cancelled round's finding count is whatever arrived before the stop, so it is
+  // not comparable to the rows above it. Say so in the row rather than beside the table.
+  const note = r => {
+    const parts = [];
+    if (r.cancelled) parts.push(el("span", { class: "rejected" }, "cancelled "));
+    if (r.scopeNote) parts.push(el("span", {}, r.scopeNote));
+    return parts.length ? parts : el("span", { class: "empty" }, "—");
+  };
   section("Rounds", el("table", {},
-    el("thead", {}, el("tr", {}, ...["#", "Kind", "Skill", "Before", "After", "Tests", "Findings"].map(h => el("th", {}, h)))),
+    el("thead", {}, el("tr", {}, ...["#", "Kind", "Skill", "Before", "After", "Tests", "Findings", "Note"].map(h => el("th", {}, h)))),
     el("tbody", {}, rounds.map(r => el("tr", {},
       el("td", {}, r.n), el("td", {}, r.kind), el("td", {}, r.skill || "—"),
       el("td", {}, sha(r.shaBefore)), el("td", {}, sha(r.shaAfter)),
-      el("td", {}, r.tests || "—"), el("td", {}, breakdown(r))))),
+      el("td", {}, r.tests || "—"), el("td", {}, breakdown(r)), el("td", {}, note(r))))),
   ));
 }
 
@@ -185,6 +193,8 @@ function findingsTable() {
     ...block("Decision reason", f.reason),
     f.reraiseOf ? el("div", { class: "label" }, `Re-raise of ${f.reraiseOf}`) : "",
     f.severity ? el("div", { class: "label" }, `Severity: ${f.severity}`) : "",
+    f.defectScope ? el("div", { class: "label" },
+      `Defect scope: ${f.defectScope}${f.sweptSites ? ` — swept ${f.sweptSites}` : ""}`) : "",
   ];
 
   function render() {
