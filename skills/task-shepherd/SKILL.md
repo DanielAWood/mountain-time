@@ -50,7 +50,7 @@ So judge it before spawning each new reviewer, in **both modes**. Put the questi
 
 Ask plainly — *is another round of this proportionate?* — with the round count, what the last two rounds actually yielded, and your recommendation. This goes to the user in supervised mode as much as unsupervised: they are deciding findings, not watching the budget, and a round they would have stopped is a round they paid for. In unsupervised mode it is an escalation like any other, so it waits for their answer.
 
-If the rounds are stopped while a round is in flight, that is a cancellation, not a clean finish — record it as **Session record** describes.
+If the rounds are stopped while a round is in flight, that is a cancellation, not a clean finish — record it as [`references/session-record.md`](references/session-record.md) describes.
 
 ## Configuration
 
@@ -109,10 +109,8 @@ Every review round, of either kind, follows this process:
 
 3. Get a decision on each finding. The user can respond per finding, or use shortcuts like "accept all recommended", "accept all", or "accept recommended except 3, 5". Relay any questions or clarifications back and forth until every finding is decided. (Unsupervised: you decide, per **Unsupervised decisions**, and the user decides only what you escalate.)
 4. For each accepted finding, settle whether its defect is an **instance** or a **class** — see **Class findings**. Send that with the decision.
-5. Send the decisions to the Impl agent and let it remediate. It must finish with tests green and report its status block.
+5. Send the decisions to the Impl agent and let it remediate — each one saying *which* defect to fix and how far to go, never in a register that can be pasted into the file under review (see the `reason` rule in [`references/session-record.md`](references/session-record.md)). It must finish with tests green and report its status block.
 6. Record every finding and its decision in the ledger (below), along with the commit sha after remediation.
-
-A decision is a routing instruction, not text for the artifact. Write it to tell the Impl agent *which* defect to fix and how far to go — not in a register that can be pasted into the file under review. A one-line reason written as finished prose tends to arrive in the artifact almost verbatim, and then it is the next round's finding, authored by the reviewer's own shepherd and read by nobody before it landed.
 
 ## Class findings
 
@@ -146,71 +144,9 @@ Each session gets a directory `~/.agents/task-shepherd/reports/<repo>/<YYYY-MM-D
 - `session.json` — the source of truth for the ledger. Create it right after spawning the Impl agent, once you have its branch and base.
 - `report.html` — a self-contained view of it. Regenerate it after every write with `python3 <this skill's directory>/render_report.py <session dir>`.
 
-Write to `session.json` whenever something is decided: each question answered, each round once remediation has landed (with its `shaAfter` and tests), the stop reason, and the outcome of the **Done** steps. Set `updatedAt` on every write. Record findings, Impl replies and questions verbatim — never paraphrase into these fields; the short and reason fields are where you summarise.
+**The schema and the rule for every field are in [`references/session-record.md`](references/session-record.md). Read it before the first write** — several fields mean something specific enough that guessing produces a record the retro reads wrongly, and `defectScope`, `cancelled`, `scopeNote` and `stopReason` all carry rules you cannot infer from their names.
 
-```json
-{
-  "schemaVersion": 1,
-  "unitOfWork": "", "issueUrl": null, "mode": "supervised | unsupervised",
-  "repo": "", "branch": "", "baseSha": "",
-  "config": { "code-review": "", "clarity-review": "" },
-  "startedAt": "<ISO 8601>", "updatedAt": "<ISO 8601>", "endedAt": null,
-  "status": "in-progress | done",
-  "questions": [
-    { "phase": "implementation | round-<n> | verification", "askedBy": "impl",
-      "question": "<verbatim>", "answer": "<verbatim>", "answeredBy": "user | shepherd" }
-  ],
-  "rounds": [
-    { "n": 1, "kind": "code-quality | clarity | verification", "skill": "",
-      "shaBefore": "", "shaAfter": "", "tests": "<pass/fail + command>",
-      "cancelled": false, "scopeNote": null,
-      "findings": [
-        { "id": "<round>.<index>", "short": "", "severity": null, "finding": "<verbatim>",
-          "implRecommendation": "accept | reject | modify", "implReason": "<verbatim>",
-          "decision": "accepted | rejected | modified | deferred", "decidedBy": "user | shepherd",
-          "defectScope": "instance | class | class-declined | null", "sweptSites": null,
-          "reason": "", "escalated": false, "reraiseOf": null, "revisit": false }
-      ] }
-  ],
-  "stopReason": "clean | thrash | disproportionate | user-requested | cap",
-  "retro": {
-    "skill": "session-retro",
-    "skipped": false,
-    "skipReason": "no-retro-flag | skill-not-installed | unusable-output | null",
-    "ranAt": "<ISO 8601> | null",
-    "findings": [
-      { "id": "retro.1",
-        "category": "process", "proposedCategory": false,
-        "short": "", "finding": "", "evidence": "", "cost": "",
-        "target": { "repo": "", "artifact": "" },
-        "proposedAction": "issue",
-        "decision": "accepted | rejected | deferred | null",
-        "decidedBy": "user | shepherd | null", "reason": "" },
-      { "id": "retro.2",
-        "category": "<coined kebab-case slug>", "proposedCategory": true,
-        "short": "", "finding": "", "evidence": "", "cost": "",
-        "target": { "skill": "", "artifact": "" },
-        "proposedAction": "issue",
-        "decision": null, "decidedBy": null, "reason": "" }
-    ]
-  },
-  "outcome": { "finalSha": null, "pushed": false, "pr": null,
-               "trackerChanges": [ { "action": "comment | edit | create", "title": "", "url": null, "status": "proposed | done | declined" } ] }
-}
-```
-
-- `short` is what a later reviewer receives as an already-decided finding, so write it as a claim about a place: "the `!isReady(first)` re-check at `manifest.ts:42` is redundant", never "`parseManifest`" or "the manifest parser".
-- `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record. Point it at a **finding** id. When the thing this finding follows from was a question rather than a finding, leave it `null` and name the question in `reason` instead — a link to the nearest-looking finding makes the chain unreconstructable, which is worse than no link.
-- `defectScope` records the **Class findings** call: `instance`, `class` (swept — list the sites in `sweptSites`), or `class-declined` (a class narrowed to one site on purpose, with the reason in `reason`). It is `null` for a finding that was not accepted. A `class-declined` entry is passed to later reviewers like any other decided finding, so the narrowing is visible rather than re-raised.
-- `revisit` marks a rejected or deferred finding worth coming back to.
-- `cancelled` on a round means the rounds were stopped while that round was in flight. Its findings are whatever had arrived — set `revisit: true` on all of them, leave `implRecommendation` and `decision` as they stand, and say in `scopeNote` what had and hadn't reported. **A cancelled round's finding count is not comparable to a completed round's**, and `scopeNote` is also where to say when a round was deliberately scoped differently from a fresh sweep.
-- `stopReason` is the cause the rounds ended, and the five values are not interchangeable — the retro keys on it. `clean` is a round that produced nothing actionable. `thrash` and `cap` are as **Code quality rounds** describes. `disproportionate` is a stop under **Proportionality**. `user-requested` is the user stopping the rounds for any other reason. A stopped session recorded as `clean` tells the retro the loop converged when it did not; if none of the five fits, use the closest and say why in the round's `scopeNote` rather than inventing a sixth value.
-- Verification has no findings of its own; record it as a round with its result in `tests` and any bugs it found as accepted findings.
-- `retro` is always written, even when the retro is skipped, so the record says the retro didn't run rather than leaving it unanswered. A skip is exactly `"skipped": true`, `"ranAt": null`, an empty `findings` array, and one of three `skipReason` values — `no-retro-flag` (the user passed `--no-retro`), `skill-not-installed`, or `unusable-output` (it ran but returned nothing you could record). Those three are the whole set; `ranAt` carries a timestamp exactly when `skipped` is false. **A retro that ran and found nothing is not a skip**: it is `skipped: false` with an empty `findings` array, and the report says so differently. Write the block as soon as the retro agent returns (or as soon as you know it is skipped), set `updatedAt`, and write it again once the findings are decided.
-- `target` is one shape or the other, never both keys: `{ "repo", "artifact" }` for an artifact in the work repo, `{ "skill", "artifact" }` for one inside a skill that isn't — the second entry above shows that arm. The tracker step branches on which key is present, so copy whichever the retro sent rather than normalising it.
-- Between the retro returning and its findings being decided in **Done**, `decision` and `decidedBy` are `null`: that is the state the record is written and rendered in, so they are nullable rather than absent.
-- `retro.findings` come back from the retro as JSON, in rank order; store them in that order, which is what the `#` column and each `retro.<n>` id mean. Copy the retro's fields across unaltered — `reason` is the one field you author, and the rule below binds it.
-- The retro's fields are the exception to recording verbatim text: they must contain no quoted finding, answer, tool output or file contents — see **Session retro**. That includes the `reason` you write when deciding one.
+Write to `session.json` whenever something is decided: each question answered, each round once remediation has landed (with its `shaAfter` and tests), the stop reason, and the outcome of the **Done** steps. Set `updatedAt` on every write. Record findings, Impl replies and questions verbatim — never paraphrase into these fields; `short` and `reason` are where you summarise.
 
 The report lives on this machine, so give the user a copy command: `scp <output of hostname -f>:<session dir>/report.html .`
 
@@ -251,7 +187,7 @@ If the project has a verify/UAT skill or documented manual check (e.g. a `verify
 
 Once the code is settled, the session itself gets reviewed. Spawn one agent to run the `session-retro` skill: a fresh `general-purpose` agent, not a `fork` — it reasons with clean eyes like every other reviewer here, and your context is the thing it would otherwise inherit its conclusions from.
 
-Run it **after verification and before the tracker step of Done**, while the Impl agent's worktree is still present: the retro checks the artifacts it names against it. It runs unless the user passed `--no-retro`, in which case record the skip in the one shape given in **Session record** and go to **Done**.
+Run it **after verification and before the tracker step of Done**, while the Impl agent's worktree is still present: the retro checks the artifacts it names against it. It runs unless the user passed `--no-retro`, in which case record the skip in the one shape given in [`references/session-record.md`](references/session-record.md) and go to **Done**.
 
 The stop reason is one of the retro's signals, so `stopReason` has to be in the record before it runs: write it when the rounds stop, not in **Done**.
 
@@ -262,9 +198,9 @@ Its prompt needs:
 - "This is read-only. Do not edit, stage or commit anything, in any repo."
 - "Cite counts, round numbers, decision ids and paths. Never quote finding text, answer text, tool output or file contents."
 
-The retro returns at most seven ranked findings as JSON. Record them in `retro` with `decision` and `decidedBy` null (see **Session record**), set `ranAt` and `updatedAt`, and render the report. They are decided with the final report, in **Done** — not in a round of their own.
+The retro returns at most seven ranked findings as JSON. Record them in `retro` with `decision` and `decidedBy` null (see [`references/session-record.md`](references/session-record.md)), set `ranAt` and `updatedAt`, and render the report. They are decided with the final report, in **Done** — not in a round of their own.
 
-Two other things make it a skip, and neither is a clean result: the skill isn't installed, or it ran and returned output you cannot parse into the record. In both, don't improvise a retro yourself and don't let it block the session — record the skip, in the shape **Session record** gives, and carry on to **Done**. **An empty findings array is not one of them** — that retro ran. The retro is the one review step with no entry in the config, which is why its missing-skill case is handled here rather than there.
+Two other things make it a skip, and neither is a clean result: the skill isn't installed, or it ran and returned output you cannot parse into the record. In both, don't improvise a retro yourself and don't let it block the session — record the skip, in the shape [`references/session-record.md`](references/session-record.md) gives, and carry on to **Done**. **An empty findings array is not one of them** — that retro ran. The retro is the one review step with no entry in the config, which is why its missing-skill case is handled here rather than there.
 
 ## Done
 

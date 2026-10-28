@@ -61,10 +61,12 @@ It is also the entry that verifies least. The other reviewers each own a tool th
 
 ## Run the reviews
 
-Where the harness has subagents, launch every roster entry **concurrently in a single message**. Where it doesn't, run them in sequence. Either way each reviewer gets:
+Where the harness has subagents, launch every roster entry **concurrently in a single message**. Where it doesn't, run them in sequence. **Every reviewer gets the whole scope** — fan out across the rubric, never across the diff. A reviewer handed a subset of the files reads its one special case as local and defensible and reports nothing, and the findings this pass ranks highest are properties of the change as a unit: a rule stated across three modules, a contract a producer and a consumer disagree about, a feature that should have been an extension of something already there. None of those is visible from any one file.
+
+Each reviewer gets:
 
 1. The exact scope and the resolved base revision.
-2. Its own instruction file, and the instruction to follow that file exactly.
+2. Its own instruction file, and the instruction to follow that file exactly. Where the **Roster** notes above name something a particular entry must do, that goes in that entry's brief — a requirement left in the roster commentary is read when resolving the roster and never reaches the reviewer it was written for.
 3. **Report-only framing: do not edit, stage, or commit** — even where its own instructions encourage restructuring. Scratch files outside the repo are fine, and some reviewers need them: a reviewer proposing a narrowing construct is expected to compile it rather than assert that it compiles.
 4. Any findings a previous round already declined, as "already decided — do not re-raise without a materially new argument." Pass each one as its own claim, carrying four things: the `path:line` it was about, what it asserted, what was decided (rejected or modified), and the one-line reason. The reason is the part that tells a reviewer what a materially new argument would have to beat; without it the entry only says "don't mention this", which is how a decision becomes a no-go area. Never hand over a function, file, module or area as settled: a reviewer given an area reads everything inside it as out of bounds, sees a real defect there, and talks itself out of writing it down. If what you hold cannot be stated as a claim about a line, it is not a decision you can pass on.
 5. The project's documented vocabulary, where it has one — `UBIQUITOUS_LANGUAGE.md`, a glossary, or the terminology section of `CLAUDE.md`. These reviewers propose extracted helpers, modules, and types, and all of those need names that agree with the codebase. Where nothing is documented, hand over the exported names of the modules in scope and say that is all there is.
@@ -162,6 +164,5 @@ No bar item is ever cleared by silence. Where this run did not clear one outrigh
 - Do not review the code yourself in place of the roster. Each reviewer exists because a narrow instruction set catches what a broad one skims past; folding their rubrics into one reading defeats the point.
 - Do not apply surface changes. Comment wording and identifier names are `code-polish`'s, and making them here destroys the guarantee that this pass changes nothing.
 - Do not report pre-existing structure as a finding.
-- **Do not split the scope between reviewers by file group.** Every reviewer gets the whole scope. The findings this pass ranks highest are properties of the change as a unit — a rule stated across three modules, a contract a producer and a consumer disagree about, a feature that should have been an extension of something already there — and none of them is visible from any one file. A reviewer handed a subset reads its one special case as local and defensible, and reports nothing. Fan out across the rubric, never across the diff.
 - Do not drop a reviewer's waiver because the reviewer sounded confident. A waiver citing the type-checker, or an earlier round's scope, is a finding this pass is specifically here to catch.
 - Do not soften a major maintainability issue into a mild suggestion. Be direct and demanding without being rude. If the change makes the codebase messier, say so plainly.
