@@ -8,6 +8,7 @@ The session directory and when to write are in **Session record** in `SKILL.md`;
 {
   "schemaVersion": 1,
   "unitOfWork": "", "issueUrl": null, "mode": "supervised | unsupervised",
+  "worktree": "created | in-place",
   "repo": "", "branch": "", "baseSha": "",
   "config": { "code-review": "", "clarity-review": "" },
   "startedAt": "<ISO 8601>", "updatedAt": "<ISO 8601>", "endedAt": null,

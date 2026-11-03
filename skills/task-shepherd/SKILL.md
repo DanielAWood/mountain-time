@@ -1,6 +1,6 @@
 ---
 name: task-shepherd
-description: "Shepherd a unit of work (e.g. a GitHub issue) from implementation to done: one long-lived implementation agent, then rounds of fresh review agents, with the user deciding every finding (or the shepherd deciding, with --unsupervised). Ends with a retrospective on how the session itself ran, unless --no-retro. Usage: /task-shepherd [--unsupervised] [--no-retro] <issue-url or task description>"
+description: "Shepherd a unit of work (e.g. a GitHub issue) from implementation to done: one long-lived implementation agent, then rounds of fresh review agents, with the user deciding every finding (or the shepherd deciding, with --unsupervised). Ends with a retrospective on how the session itself ran, unless --no-retro. --no-worktree works in the current checkout instead of a new worktree. Usage: /task-shepherd [--unsupervised] [--no-retro] [--no-worktree] <issue-url or task description>"
 disable-model-invocation: true
 ---
 
@@ -17,7 +17,11 @@ If no unit of work was provided as an argument, ask the user what to work on bef
 - **Supervised (default):** the user decides every finding and answers every question.
 - **Unsupervised (`--unsupervised` in the arguments):** you make the decisions the user would otherwise make — on the Impl agent's recommendations and its open questions — and only stop for the user when confidence is low or the result is high risk (see **Unsupervised decisions**). Everything else in this skill stays the same: the rounds, the ledger, tests green, verification. Strip the flag before passing the unit of work to the Impl agent.
 
-`--no-retro` skips the session retro (see **Session retro**); without it the retro runs unless `session-retro` is unavailable. Strip it from the arguments too, along with `--unsupervised`, before the unit of work reaches the Impl agent — flags addressed to you are not part of the task.
+`--no-retro` skips the session retro (see **Session retro**); without it the retro runs unless `session-retro` is unavailable.
+
+`--no-worktree` means the Impl agent works in the current checkout rather than creating a worktree: the user is either already in one or doesn't need one. Swap the worktree bullet in the Impl brief for the in-place one (see **Implementation**), and record `"worktree": "in-place"` in `session.json` (otherwise `"created"`). **Done** reads that field to skip the worktree removal — the checkout isn't yours to remove, and a flag seen only at the start of a long session doesn't survive compaction.
+
+Strip all three flags from the arguments before the unit of work reaches the Impl agent — flags addressed to you are not part of the task.
 
 ### Unsupervised decisions
 
@@ -82,6 +86,10 @@ Its spawn prompt should contain the unit of work plus this brief (adapt as neede
 > You are the Implementation agent for: <unit of work>.
 >
 > - **Work in your own git worktree**, never in the user's checkout. The user may have uncommitted changes there, and repo-wide commands (formatters, codegen) can silently destroy them. Start with `git worktree add <scratch-path> -b <branch> <base>`, install dependencies there, and run everything from it. If a project script only works from the main checkout, ask rather than working around it.
+>
+>   With `--no-worktree`, use this bullet instead:
+>
+> - **Work in the current checkout** (`<cwd>`); don't create a worktree. Before changing anything, run `git status`: if there are uncommitted changes, list them and ask before going on, since repo-wide commands (formatters, codegen) can destroy them. Stay on the current branch unless it's the default branch, in which case create one in place with `git switch -c <branch>`. Report the checkout as `Worktree` in the status block.
 > - **Explore through subagents, and keep summaries rather than file dumps.** Your context has to last the whole task, through every review round. Send each "how does X work" or "where does Y live" question to a read-only `Explore` subagent. Ask it for a map: the files and symbols involved, the `path:line` ranges that matter, the data shapes, and any gotchas. If a question spans several subsystems, split it into 2–4 angles and spawn them all in one message. Read source yourself only for the lines you're about to change or need to match exactly. Find them with `grep -n`, read them with `Read` using offset/limit, and don't re-read a range you've already seen. Never `cat` a whole source file. Send build and test output to a log file and read it through `tail` or `grep`.
 > - Work autonomously. Make your own reasonable decisions without checking in. Only stop and return when you hit a genuine question that needs the user's input (ambiguous requirements, product decisions, trade-offs you can't resolve from the code or issue). When you do, end your turn with the questions clearly listed — don't guess past them.
 > - Follow the repo's commit conventions (check CLAUDE.md). Unless told otherwise: one commit for the unit of work, with all later remediation amended into it.
@@ -237,6 +245,6 @@ Then (in both modes, these need the user's approval — pushing, opening PRs and
    Which key `target` carries says where the issue goes. `repo` is the work repo: file there like anything else in this step. `skill` names a *skill*, not a repo, because the retro cannot see where a skill it isn't looking at came from — so you resolve it, from the directory that skill is installed in. If that directory is a git checkout of a repo the user has, file there. If it's an installed copy — a plugin directory, or anything `npx skills` wrote — there is no tracker to file against: show the user the proposal with the reason that no owning repo could be resolved, and leave it `proposed` unless they decline it.
 
    Creating issues needs the user's approval even in unsupervised mode, by the same rule as everything else in this step. Record each outcome in `outcome.trackerChanges` alongside the rest, naming the finding id in the title so the record ties the two together.
-3. **Clean up.** Once the branch is pushed (or the user says so), have the Impl agent remove its worktree.
+3. **Clean up.** Once the branch is pushed (or the user says so), have the Impl agent remove its worktree — unless `session.json` says `"worktree": "in-place"`, in which case leave the checkout alone.
 
 Record the outcome of steps 1 and 2 (`pushed`, `pr`, `trackerChanges`) in `session.json` and render the report again.
