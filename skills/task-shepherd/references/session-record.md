@@ -14,8 +14,9 @@ The session directory and when to write are in **Session record** in `SKILL.md`;
   "startedAt": "<ISO 8601>", "updatedAt": "<ISO 8601>", "endedAt": null,
   "status": "in-progress | done",
   "questions": [
-    { "phase": "implementation | round-<n> | verification", "askedBy": "impl",
-      "question": "<verbatim>", "answer": "<verbatim>", "answeredBy": "user | shepherd" }
+    { "phase": "implementation | round-<n> | verification", "askedBy": "impl | shepherd",
+      "question": "<verbatim>", "answer": "<verbatim>", "answeredBy": "user | shepherd",
+      "chain": null }
   ],
   "rounds": [
     { "n": 1, "kind": "code-quality | clarity | verification", "skill": "",
@@ -26,7 +27,8 @@ The session directory and when to write are in **Session record** in `SKILL.md`;
           "implRecommendation": "accept | reject | modify", "implReason": "<verbatim>",
           "decision": "accepted | rejected | modified | deferred", "decidedBy": "user | shepherd",
           "defectScope": "instance | class | class-declined | null", "sweptSites": null,
-          "reason": "", "escalated": false, "reraiseOf": null, "revisit": false }
+          "reason": "", "escalated": false, "reraiseOf": null, "causedBy": null,
+          "failingTest": null, "invariant": null, "revisit": false }
       ] }
   ],
   "stopReason": "clean | thrash | disproportionate | user-requested | cap",
@@ -61,8 +63,15 @@ The session directory and when to write are in **Session record** in `SKILL.md`;
 - `short` is what a later reviewer receives as an already-decided finding, so write it as a claim about a place: "the `!isReady(first)` re-check at `manifest.ts:42` is redundant", never "`parseManifest`" or "the manifest parser".
 - `reason` is yours to author, and it is read by the Impl agent as an instruction. Write it to say *which* defect to fix and how far to go — not as finished prose that can be pasted into the file under review. A reason written in the artifact's own register tends to arrive in the artifact almost verbatim, and then it is the next round's finding, authored by the shepherd and read by nobody before it landed.
 - `reraiseOf` is the `id` of an earlier finding this one repeats or reverses; set it whenever you spot one, since it is how thrash shows up in the record. Point it at a **finding** id. When the thing this finding follows from was a question rather than a finding, leave it `null` and name the question in `reason` instead — a link to the nearest-looking finding makes the chain unreconstructable, which is worse than no link.
+- `causedBy` is the `id` of the accepted finding whose remediation introduced this finding's defect. It is a different link from `reraiseOf`: a re-raise repeats or reverses an earlier claim, while `causedBy` says the earlier *fix* wrote the bug. A real-bug reversal sets both. Following `causedBy` back gives the fix-of-fix chain that **Fix-of-fix chains** in `SKILL.md` counts, so set it on every finding the Impl agent traces to an earlier remediation, and only then. A guess breaks the chain the same way a wrong `reraiseOf` does.
+- `failingTest` and `invariant` are set on every accepted correctness fix, from the Impl agent's report. `failingTest` names the test that failed on the pre-fix code. `invariant` is one sentence saying what must always hold. Both are `null` for any finding that isn't a correctness fix. If no failing-first test could be written, leave `failingTest` `null`, give the cause in `reason`, and treat it as the escalation `SKILL.md` describes.
 - `defectScope` records the **Class findings** call: `instance`, `class` (swept — list the sites in `sweptSites`), or `class-declined` (a class narrowed to one site on purpose, with the reason in `reason`). It is `null` for a finding that was not accepted. A `class-declined` entry is passed to later reviewers like any other decided finding, so the narrowing is visible rather than re-raised.
 - `revisit` marks a rejected or deferred finding worth coming back to.
+
+## Questions
+
+- `askedBy: "shepherd"` marks a question you put to the user yourself rather than one relayed from the Impl agent. A fix-of-fix escalation and a **Proportionality** check are both examples.
+- `chain` is set only on a fix-of-fix escalation. It holds the chain's finding ids, oldest first, ending with the finding that reached the limit, e.g. `["3.C4", "4.1", "5.1a"]`. It is `null` on every other question.
 
 ## Rounds
 
