@@ -34,6 +34,8 @@ For the Impl agent's open questions, answer them yourself when the issue, the re
 - Rejecting a correctness or security finding (rejecting a style finding is fine).
 - The change touches a public API, data schema or migration, auth/permissions, security boundaries, infrastructure, or dependencies (adding, removing or upgrading).
 - The change deletes or weakens tests, or widens the scope beyond the unit of work.
+- The Impl agent cannot write a test that fails before an accepted correctness fix (see **Implementation**).
+- A finding completes a **fix-of-fix chain** — see **Fix-of-fix chains**. Like **Proportionality**, this one goes to the user in supervised mode too.
 - The decision reverses one the user made earlier in this session.
 - Anything needing the user's hands: sign-ins, credentials, secrets.
 - **The review has outgrown the artifact** — see **Proportionality**. Every other trigger here is about the risk of a change; this one is about the cost of continuing to look.
@@ -94,6 +96,7 @@ Its spawn prompt should contain the unit of work plus this brief (adapt as neede
 > - Work autonomously. Make your own reasonable decisions without checking in. Only stop and return when you hit a genuine question that needs the user's input (ambiguous requirements, product decisions, trade-offs you can't resolve from the code or issue). When you do, end your turn with the questions clearly listed — don't guess past them.
 > - Follow the repo's commit conventions (check CLAUDE.md). Unless told otherwise: one commit for the unit of work, with all later remediation amended into it.
 > - Keep tests green. Run the test suite before ending any turn where you changed code, and report the result. Any accepted change that alters behaviour needs a test that pins the new behaviour — review fixes are a common source of new bugs.
+> - **Every accepted correctness fix lands with a test that fails on the code before the fix, and states the invariant it keeps.** Run the new test against the pre-fix code (e.g. stash the source change and keep the test) and confirm it fails for the reason the finding gives — a test that passes either way pins nothing. For each one, report the test's name and one sentence stating the invariant — what must always hold — not a description of the change. If you cannot write a test that fails first, say why and stop on that finding rather than landing the fix without one.
 > - Later, you'll receive review findings. You don't review your own work, but you know best why things were done the way they were — for each finding give a recommendation (accept / reject / modify) with a short justification. You may run experiments to check a finding, but restore everything afterwards and say what you tried. Don't act on findings until told which ones the user approved; once told, carry out the approved remediation autonomously.
 > - **Remediate exactly what was approved, and no more.** Each accepted finding arrives with a scope — one site, or a named set of sites. Anything else you think also needs changing is a *new proposal*: report it with the remedy and leave the code alone. Writing the remedy stronger than it was approved, or tidying the neighbourhood while you are in there, is how the next review round gets its findings — and they will be yours, against work nobody approved. If an approved remedy turns out to be unimplementable as scoped, say so and stop rather than widening it.
 > - End every turn with a status block:
@@ -117,9 +120,9 @@ Every review round, of either kind, follows this process:
    |---|---|---|---|
 
 3. Get a decision on each finding. The user can respond per finding, or use shortcuts like "accept all recommended", "accept all", or "accept recommended except 3, 5". Relay any questions or clarifications back and forth until every finding is decided. (Unsupervised: you decide, per **Unsupervised decisions**, and the user decides only what you escalate.)
-4. For each accepted finding, settle whether its defect is an **instance** or a **class** — see **Class findings**. Send that with the decision.
-5. Send the decisions to the Impl agent and let it remediate — each one saying *which* defect to fix and how far to go, never in a register that can be pasted into the file under review (see the `reason` rule in [`references/session-record.md`](references/session-record.md)). It must finish with tests green and report its status block.
-6. Record every finding and its decision in the ledger (below), along with the commit sha after remediation.
+4. For each accepted finding, settle whether its defect is an **instance** or a **class** — see **Class findings**. Send that with the decision. Also settle whether an earlier remediation caused the defect, and if it completes a chain, escalate before any remediation starts — see **Fix-of-fix chains**.
+5. Send the decisions to the Impl agent and let it remediate — each one saying *which* defect to fix and how far to go, never in a register that can be pasted into the file under review (see the `reason` rule in [`references/session-record.md`](references/session-record.md)). It must finish with tests green and report its status block, plus the failing-first test and invariant for each correctness fix.
+6. Record every finding and its decision in the ledger (below), along with the commit sha after remediation and, for correctness fixes, the test and invariant.
 
 ## Class findings
 
@@ -134,11 +137,31 @@ The reviewer is often the one that tells you. A finding that counts sites ("four
 
 Where the class is "this rule is stated in N places at all", the remedy that ends the loop is usually to make it stated once. Prefer that over a wider sweep, and say so when you relay.
 
+## Fix-of-fix chains
+
+A fix can introduce a bug of its own, and the next round finds it. That is normal once. When it keeps happening in the same place, each fix is patching the last one, and another patch won't end it. The design of that area is the problem. The thrash rule doesn't catch this, because each finding is a real bug, so it needs its own limit.
+
+For every finding, ask the Impl agent whether an earlier remediation introduced the defect. If one did, record that finding's id in `causedBy`. Following `causedBy` back from a finding gives its **chain**, e.g. `3.C4 → 4.1 → 5.1a`, where 4.1 was a bug in the fix for 3.C4 and 5.1a a bug in the fix for 4.1.
+
+**When a chain reaches three findings, escalate instead of remediating the third.** This applies in both modes, and the rest of the round goes ahead. Before you ask, have the Impl agent propose a redesign of the area the chain touched, without implementing it. The proposal must keep every invariant the chain's fixes recorded and say which of those invariants the current design makes hard to keep together. Then ask the user:
+
+- the chain, as ids with each link's `short` and `invariant`;
+- the redesign proposal and the Impl agent's recommendation;
+- the question: *redesign this area, patch it once more, or stop the rounds?*
+
+Record the question in `questions` with `askedBy: "shepherd"` and the chain's ids in `chain`. Set `escalated: true` on the finding.
+
+- **Redesign:** the approved redesign becomes this finding's remediation, and its scope is the area rather than the one site. The redesigned code still needs a failing-first test for each invariant the chain recorded.
+- **Patch once more:** remediate as usual. A fourth link escalates again; the earlier answer doesn't carry over.
+- **Stop:** this is `stopReason: "user-requested"`, with the chain named in the round's `scopeNote`.
+
+A chain can touch more than one file. It counts all the same, because `causedBy` already means the code a fix wrote. Name the files the chain touched when you ask.
+
 ## Ledger
 
 Keep a running ledger across all rounds in `session.json` (see **Session record**), not just in your context: long sessions get compacted, and the verbatim findings and reasons are what a summary loses. Re-read it before each round. Each fresh reviewer starts from zero, so without this it will re-raise findings the user already rejected — the main source of churn. The ledger also lets you detect thrash.
 
-For each finding: round number, reviewer, short description, decision (accepted / rejected / modified), who decided (user / shepherd), and a one-line reason. For each round: the commit sha after its remediation.
+For each finding: round number, reviewer, short description, decision (accepted / rejected / modified), who decided (user / shepherd), a one-line reason, the remediation that caused it if any (`causedBy`), and for a correctness fix the failing-first test and the invariant it keeps. For each round: the commit sha after its remediation.
 
 Pass the reviewer the rejected and modified entries as "already decided — do not re-raise unless you have a materially new argument."
 
@@ -175,7 +198,7 @@ Have the reviewer run the `code-review` skill from the config on the scope. Then
 
 Repeat with a new reviewer each round until one of these happens:
 - A round produces no actionable findings (everything is rejected, or the reviewer found nothing).
-- Thrash: the ledger shows a round reversing an earlier accepted change as a matter of taste (round N changed X→Y, round N+1 suggests Y→X), or re-raising rejected findings without new arguments. Tell the user what you observed and stop the rounds. A reversal because the earlier change introduced a real bug is not thrash — note it and carry on.
+- Thrash: the ledger shows a round reversing an earlier accepted change as a matter of taste (round N changed X→Y, round N+1 suggests Y→X), or re-raising rejected findings without new arguments. Tell the user what you observed and stop the rounds. A reversal because the earlier change introduced a real bug is not thrash. Record it in `causedBy` and carry on, until the chain reaches the limit in **Fix-of-fix chains**.
 - The review has outgrown the artifact, and the user agrees it should stop — see **Proportionality**. The findings may still be real; this is the stop reason for when they have stopped being worth the round.
 - The user stops the rounds.
 - 10 rounds are done (hard cap).
