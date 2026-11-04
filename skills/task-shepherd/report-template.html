@@ -174,6 +174,38 @@ function timeline() {
   ));
 }
 
+// Chains follow `causedBy` back from each finding no later finding was caused by.
+// A fix that spawned two findings gives two chains sharing a prefix; the seen-set
+// stops a malformed record that links in a cycle from looping forever.
+const CHAIN_LIMIT = 3;
+function chains() {
+  const byId = new Map(findings.map(f => [f.id, f]));
+  const causes = new Set(findings.map(f => f.causedBy).filter(Boolean));
+  return findings.filter(f => f.causedBy && !causes.has(f.id)).map(leaf => {
+    const chain = [];
+    const seen = new Set();
+    for (let f = leaf; f && !seen.has(f.id); f = byId.get(f.causedBy)) {
+      seen.add(f.id);
+      chain.unshift(f);
+    }
+    return chain;
+  });
+}
+function chainsSection() {
+  const all = chains();
+  if (!all.length) return section("Fix-of-fix chains", empty("No finding was caused by an earlier remediation."));
+  section("Fix-of-fix chains",
+    el("div", { class: "filters" }, el("span", {},
+      `A chain of ${CHAIN_LIMIT} or more findings is escalated for a redesign. Each link's defect was introduced by the remediation of the one before it.`)),
+    el("table", {},
+      el("thead", {}, el("tr", {}, ...["Chain", "Length", "Links", "Escalated"].map(h => el("th", {}, h)))),
+      el("tbody", {}, all.map(c => el("tr", { class: c.length >= CHAIN_LIMIT ? "against" : "" },
+        el("td", { class: "mono" }, c.map(f => f.id).join(" → ")),
+        el("td", {}, c.length),
+        el("td", {}, el("ol", {}, c.map(f => el("li", {}, `${f.id}: ${f.short || ""}`,
+          f.invariant ? el("div", { class: "label" }, `invariant: ${f.invariant}`) : "")))),
+        el("td", {}, c.some(f => f.escalated) ? "yes" : (c.length >= CHAIN_LIMIT ? el("span", { class: "rejected" }, "no") : "—")))))));
+}
 function findingsTable() {
   if (!findings.length) return section("Findings", empty("No findings recorded."));
   const filters = { decision: "", decidedBy: "", escalated: "", kind: "" };
@@ -192,6 +224,9 @@ function findingsTable() {
     ...block(`Impl recommendation: ${f.implRecommendation || "—"}`, f.implReason),
     ...block("Decision reason", f.reason),
     f.reraiseOf ? el("div", { class: "label" }, `Re-raise of ${f.reraiseOf}`) : "",
+    f.causedBy ? el("div", { class: "label" }, `Caused by the remediation of ${f.causedBy}`) : "",
+    ...block("Invariant kept", f.invariant),
+    f.failingTest ? el("div", { class: "label" }, `Failing-first test: ${f.failingTest}`) : "",
     f.severity ? el("div", { class: "label" }, `Severity: ${f.severity}`) : "",
     f.defectScope ? el("div", { class: "label" },
       `Defect scope: ${f.defectScope}${f.sweptSites ? ` — swept ${f.sweptSites}` : ""}`) : "",
@@ -224,7 +259,8 @@ function findingsTable() {
 
 function qa(list) {
   return list.map(q => el("div", { class: "qa" },
-    el("div", { class: "label" }, `${q.phase || ""} · asked by ${q.askedBy || "impl"} · answered by ${q.answeredBy || "—"}`),
+    el("div", { class: "label" }, [`${q.phase || ""} · asked by ${q.askedBy || "impl"} · answered by ${q.answeredBy || "—"}`,
+      q.chain && q.chain.length ? ` · fix-of-fix chain ${q.chain.join(" → ")}` : ""].join("")),
     el("div", { class: "verbatim" }, q.question || ""),
     el("div", { class: "label" }, "Answer"),
     el("div", { class: "verbatim" }, q.answer ?? "(unanswered)")));
@@ -307,6 +343,7 @@ function openThreads() {
 header();
 tiles();
 timeline();
+chainsSection();
 findingsTable();
 questionsSection();
 shepherdCalls();
