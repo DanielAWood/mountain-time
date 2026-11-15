@@ -15,6 +15,7 @@
         "./skills/type-precision-review",
         "./skills/test-review",
         "./skills/error-path-review",
+        "./skills/trust-boundary-review",
         "./skills/comment-slayer",
         "./skills/naming-review",
         "./skills/prose-review",

@@ -37,13 +37,14 @@ One entry per line, naming what to invoke:
 - skill: test-review
 - skill: error-path-review
 - skill: comment-slayer --kill-only
+- skill: trust-boundary-review
 ```
 
 `skill:` and `agent:` name something installed in the harness, and are the normal form — the defaults above are all installed skills a dispatched reviewer can invoke by name. `file:` is a path to an instruction file the reviewer reads and follows exactly; reach for it only where an entry genuinely cannot be invoked that way — a review that exists solely as a prompt file, or one the harness withholds from a subagent. Trailing arguments pass through to the entry.
 
-With no roster file, run those five defaults. Check each entry resolves; if one doesn't, say so and carry on with the rest — never silently substitute another.
+With no roster file, run those six defaults. Check each entry resolves; if one doesn't, say so and carry on with the rest — never silently substitute another.
 
-**A roster file replaces the defaults; it does not extend them.** The first file that exists is the whole roster, so a project or personal roster written before a default was added silently drops it, and the pass goes on looking complete. Before running, diff the resolved roster against the five defaults above and **name every default it omits** — say which question therefore goes unasked this round, and that adding a line to the resolved roster file is what fixes it.
+**A roster file replaces the defaults; it does not extend them.** The first file that exists is the whole roster, so a project or personal roster written before a default was added silently drops it, and the pass goes on looking complete. Before running, diff the resolved roster against the six defaults above and **name every default it omits** — say which question therefore goes unasked this round, and that adding a line to the resolved roster file is what fixes it.
 
 Worth adding, where the project has one: a correctness and bug review. This pass does not ask whether the code computes the right answer.
 
@@ -51,9 +52,11 @@ Worth adding, where the project has one: a correctness and bug review. This pass
 
 Its remedies are the exception to this pass's behavior-preserving framing: they change the error payload. **A remedy that changes what a caller observes carries a `behavior-affecting` label**, whichever reviewer proposed it and whether it came from a reviewer or out of Design It Twice — a structural remedy that happens to enrich an error message is labelled on the same terms. The label is the exception, not a field on every finding: an unlabelled finding is read as behavior-preserving. Keep any label in the report, and separate the behavior-preserving part of a remedy from the part that is not, so the invoker can take one without the other. The pass stays report-only either way; the invoker decides.
 
-`error-path-review` is the one roster entry where the label is the common case rather than the exception, so it also emits `caller-visible: none` to mark a remedy that changes nothing a caller sees. Do not expect that marker from any other reviewer.
+`error-path-review` is the one roster entry where every finding carries one of two labels, so it also emits `caller-visible: none` to mark a remedy that changes nothing a caller sees. Do not expect that marker from any other reviewer.
 
 It is also the entry that verifies least. The other reviewers each own a tool their standards push them toward — `test-review` runs the suite, `type-precision-review` compiles its proposed constructs, `comment-slayer` runs the linter, `code-structure-review` measures file size — and nothing in "what does this failure tell the caller" reaches for any of them, so its findings tend to arrive argued rather than demonstrated. **Ask it for the failure, not a reading of the code**: the input that produces the error, the message a caller actually receives, and for a message standing in for several causes, the two inputs that produce the same text. An error path is cheap to execute, and a claim about what a caller sees is settled by seeing it. Where it could not run the path, it should say so and the finding stays PLAUSIBLE.
+
+`trust-boundary-review` is among the defaults because the other reviewers read a client-visible field as a name and a type. None of them asks what each of its values lets a caller tell apart, whether untrusted input gains authority, or whether this caller may act on this object. Passing a structural review says nothing about those questions, and it can only tell that code defeats a decision if it has read that decision, which is what item 11 below is for. Many of its remedies change the wire and carry the `behavior-affecting` label.
 
 `test-review` belongs in this pass, not in `code-polish`, because changing an assertion changes what the suite catches. That is a functional change to the tests, however cosmetic the edit looks.
 
@@ -75,6 +78,7 @@ Each reviewer gets:
 8. The project's type-check and lint commands, **with the flags the project actually runs**. A reviewer compiling a proposed construct in a scratch file gets no `tsconfig`, and the flags decide the answer: a guard that looks dead under `--strict` alone is load-bearing under `--noUncheckedIndexedAccess`, so a reviewer without the flags proposes a remedy that crashes. If the project has no such command, say so.
 9. One sentence covering everything it hands back beyond findings: **if a remedy changes what a caller observes, label it `behavior-affecting` and say what a caller sees differently; if you are handing a doubt to another reviewer, say which reviewer and give the evidence.** An unlabelled finding is read as behavior-preserving, so silence here is a claim.
 10. A request to say, for each finding, **whether the defect is at the one site named or at every site stating the same rule** — and where it is the latter, to name all of them. A reviewer that finds a guard missing from one call site has usually found how the guard was propagated, and that is a different finding with a different remedy. Reviewers are generally willing to look once asked; unasked, they report the site they were reading.
+11. The decisions that bind the change: the issue or PR description, the ADR or decision-record directory, and any decisions made earlier in this session, each with its reason. Hand over paths where they exist and the text where they do not. Where none exist, say so. A reviewer cannot find that code defeats a decision it was never shown.
 
 ## Collate
 
@@ -104,11 +108,13 @@ Re-raise on the same terms a waiver justified by *an earlier round settled this 
 
 What is *not* re-raised is a waiver that asserts no checkable claim at all — *this is fine, I looked*, *it reads clearly to me*. List those, one line each, with three of the four fields a decided finding carries: the `path:line`, what was considered (in place of what it asserted), and the one-line reason. A one-liner naming only an area — "considered the export narrowing and left it" — is the same defect this pass is here to stop, committed by the report rather than by a reviewer.
 
-Rank the collated report: structural regressions, then missed simplifications, then spaghetti and branching growth, then boundary, ownership and type-precision problems, then file size, then legibility. Rank a merged finding by its highest band and name the others it spans. Prefer a small number of high-conviction findings over a long list of nits.
+Rank the collated report: CONFIRMED trust-boundary findings, then structural regressions, then missed simplifications, then spaghetti and branching growth, then boundary, ownership and type-precision problems, then file size, then legibility. Rank a merged finding by its highest band and name the others it spans. Prefer a small number of high-conviction findings over a long list of nits.
 
 Carry each reviewer's verdict through to the report rather than flattening it — they route differently. CONFIRMED findings carry a remedy ready to decide on. PLAUSIBLE ones do not, and go to **Design It Twice**.
 
 A reviewer may qualify a PLAUSIBLE verdict to say its open question is not a design question — `PLAUSIBLE (unreached)`, where the defect is real for an input the types admit but no producer is known to emit. Do not send those to Design It Twice: no amount of interface design answers "does a producer exist". Route them to whoever owns the producer as a question with the input attached. Generating three designs for a case that may never occur is how a pass spends its credibility.
+
+`PLAUSIBLE (intent)` is the other such form: whether it is a defect at all depends on a decision nobody has written down. Do not send it to Design It Twice. Put the question to whoever owns that decision, with the two callers the reviewer named.
 
 ## Design It Twice
 
@@ -152,6 +158,9 @@ Do not approve merely because behavior seems correct. The bar is:
 - no check kept only so the compiler narrows, and no branch retained that no input reaches
 - no error that leaves the caller to discover its remaining causes one request at a time
 - no single message standing in for several distinct causes a caller would act on differently
+- no client-visible value that defeats a decision about what a caller may learn
+- no untrusted input given the authority of the instructions around it
+- no object, field or tenant reachable without the check its siblings have
 
 No bar item is ever cleared by silence. Where this run did not clear one outright, report it as one of two things, because an invoker acts on them oppositely:
 
