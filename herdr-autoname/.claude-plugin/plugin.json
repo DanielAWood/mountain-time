@@ -1,7 +1,7 @@
 {
   "name": "herdr-autoname",
   "displayName": "Herdr auto-name",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Renames each Herdr agent pane to the session's current phase of work",
   "author": { "name": "Dan Wood" },
   "repository": "https://github.com/DanielAWood/mountain-time",
