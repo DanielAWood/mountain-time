@@ -18,7 +18,8 @@
 # How it stays fast: the label comes from a stripped-down headless Claude call
 # (no MCP servers, replaced system prompt, no tools), which takes several
 # seconds. So the hook does NOT do that inline; it detaches a worker and
-# returns at once.
+# returns at once. The worker is throttled - a cooldown per pane and one
+# labeller machine-wide - because each label is a full Claude Code start-up.
 #
 # No stored state: the phase is read off the transcript tail each time, which
 # already carries which round the session is in. A manual rename is transient
@@ -43,9 +44,16 @@ MAX_REPLY_CHARS=60  # beyond this the model wrote prose, not a label
 
 # Sonnet by default: on a real transcript tail Haiku read a meta session as
 # "testing" where Sonnet read "implementation", and Sonnet answered faster.
-# Override to trade accuracy for cost:
-#   HERDR_AUTONAME_MODEL=claude-haiku-4-5-20251001
-MODEL="${HERDR_AUTONAME_MODEL:-claude-sonnet-5}"
+# An alias rather than a pinned ID, so a retired model version can't silently
+# break every label. Override to trade accuracy for cost:
+#   HERDR_AUTONAME_MODEL=haiku
+MODEL="${HERDR_AUTONAME_MODEL:-sonnet}"
+
+# Minimum seconds between relabels of one pane. Every label is a full headless
+# Claude Code start-up, and a looping session fires Stop every few seconds.
+# 0 disables the cooldown.
+COOLDOWN="${HERDR_AUTONAME_COOLDOWN:-60}"
+case "$COOLDOWN" in ''|*[!0-9]*) COOLDOWN=60 ;; esac
 
 # Opt-in tracing. The `return 0` matters: with debugging off the `[ -n ]` test
 # fails, so a `log` call that ends a branch would return non-zero.
@@ -125,16 +133,42 @@ prompt="${HERDR_AUTONAME_PROMPT:-}"
 # self-healing: anything older than 2min is treated as abandoned (a worker
 # killed before its trap ran must not mute auto-naming for the session).
 # -mmin must be an integer: BSD find and bfs both reject +1.5.
-lock_dir="${TMPDIR:-/tmp}/herdr-autoname-$(printf '%s' "$pane_id" | tr -c 'a-zA-Z0-9' '-').lock"
-if [ -d "$lock_dir" ]; then
-  if [ -z "$(find "$lock_dir" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
-    log "$pane_id: a worker is mid-flight, dropping this trigger"
-    exit 0
+pane_key="$(printf '%s' "$pane_id" | tr -c 'a-zA-Z0-9' '-')"
+
+# take_lock <dir> - mkdir-based so it works where flock(1) is missing (macOS).
+# Fails if a live holder has it; reclaims it if the holder looks abandoned.
+take_lock() {
+  if [ -d "$1" ]; then
+    [ -n "$(find "$1" -maxdepth 0 -mmin +2 2>/dev/null)" ] || return 1
+    rmdir "$1" 2>/dev/null || true
   fi
-  rmdir "$lock_dir" 2>/dev/null || true
+  mkdir "$1" 2>/dev/null
+}
+
+lock_dir="${TMPDIR:-/tmp}/herdr-autoname-$pane_key.lock"
+global_lock_dir=""
+take_lock "$lock_dir" ||
+  { log "$pane_id: a worker is mid-flight, dropping this trigger"; exit 0; }
+trap 'rmdir "$lock_dir" ${global_lock_dir:+"$global_lock_dir"} 2>/dev/null || true' EXIT HUP INT TERM
+
+# Cooldown per pane. The stamp holds epoch seconds rather than relying on
+# mtime, because find -mmin only resolves whole minutes.
+stamp_file="${TMPDIR:-/tmp}/herdr-autoname-$pane_key.stamp"
+now="$(date +%s)"
+last="$(cat "$stamp_file" 2>/dev/null || echo 0)"
+case "$last" in ''|*[!0-9]*) last=0 ;; esac
+if [ $(( now - last )) -lt "$COOLDOWN" ]; then
+  log "$pane_id: relabelled $(( now - last ))s ago, dropping this trigger"
+  exit 0
 fi
-mkdir "$lock_dir" 2>/dev/null || exit 0
-trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+
+# One labeller machine-wide. With many panes each firing Stop, parallel
+# labellers stack up; a dropped trigger costs nothing, since the next one
+# relabels from a fresher tail.
+take_lock "${TMPDIR:-/tmp}/herdr-autoname.global.lock" ||
+  { log "$pane_id: another pane's labeller is running, dropping this trigger"; exit 0; }
+global_lock_dir="${TMPDIR:-/tmp}/herdr-autoname.global.lock"
+printf '%s\n' "$now" >"$stamp_file"
 
 current_name="$(herdr agent get "$pane_id" 2>/dev/null \
   | jq -r '.result.agent.name // empty' 2>/dev/null || true)"
@@ -183,9 +217,13 @@ $evidence
 # HERDR_ENV stripped so this child can't disturb Herdr's own SessionStart
 # tracking; HERDR_AUTONAME_CHILD set so it can't re-trigger this hook.
 # Tools disallowed + strict MCP keep it to a single non-agentic text turn.
+# disableAllHooks: each label is a full session start and end, so without it
+# every SessionStart/SessionEnd hook the user has fires once per label - a
+# hook that itself spawns `claude` turns that into a process storm.
 labeller_json="$(env -u HERDR_ENV HERDR_AUTONAME_CHILD=1 claude -p "$label_request" \
       --model "$MODEL" \
       --system-prompt "$system_prompt" \
+      --settings '{"disableAllHooks":true}' \
       --strict-mcp-config \
       --disallowed-tools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "WebFetch" "WebSearch" "Task" "TodoWrite" \
       --output-format json 2>/dev/null || true)"

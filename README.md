@@ -62,9 +62,12 @@ Requires `herdr`, `jq`, `python3`, and `claude` on `PATH`. **Does nothing unless
 
 How it works: it runs on `UserPromptSubmit` (so the name is right well before a long turn ends) and on `Stop` (to catch phases that begin without a prompt, like a looped review skill starting its next round). Both triggers take one code path. The label comes from a stripped-down headless `claude` call — no MCP servers, replaced system prompt, no tools — which takes a few seconds, so the hook never does that inline: it validates, detaches a worker, and returns. It keeps no state; the phase is re-read off the transcript tail each time, so a manual rename is transient by design.
 
+Each label is a full headless Claude Code start-up, so the worker is throttled: a pane is relabelled at most once per cooldown, only one labeller runs machine-wide at a time (a trigger that finds it busy is dropped — the next one relabels from a fresher tail), and the child runs with all hooks disabled so your other `SessionStart`/`SessionEnd` hooks don't fire once per label.
+
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `HERDR_AUTONAME_MODEL` | `claude-sonnet-5` | Labelling model. Haiku is cheaper but read a meta session as `testing` where Sonnet read `implementation` |
+| `HERDR_AUTONAME_MODEL` | `sonnet` | Labelling model. Haiku (`haiku`) is cheaper but read a meta session as `testing` where Sonnet read `implementation` |
+| `HERDR_AUTONAME_COOLDOWN` | `60` | Minimum seconds between relabels of one pane; `0` disables |
 | `HERDR_AUTONAME_DEBUG` | unset | Set to `1` to trace why nothing happened, to `$TMPDIR/herdr-autoname.log` |
 
 Every failure path is a silent `exit 0` — hook mode never writes to stdout, because `UserPromptSubmit` stdout is injected into the model's context. So if names aren't changing, set `HERDR_AUTONAME_DEBUG=1`; every exit logs its reason.
